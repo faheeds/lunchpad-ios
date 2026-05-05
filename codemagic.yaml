@@ -116,17 +116,22 @@ workflows:
 
       - name: Build iOS archive (Release)
         script: |
-          set -o pipefail
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -sdk iphoneos \
             -configuration Release \
             -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
+            SKIP_INSTALL=NO \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            clean archive \
-            | xcpretty --color
+            clean archive 2>&1 | tee /tmp/xcodebuild_full.log | xcpretty --color
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "=== FULL XCODEBUILD ERRORS ==="
+            grep -E "error:|Error" /tmp/xcodebuild_full.log | grep -v "^2026" | head -40
+            exit $BUILD_EXIT
+          fi
 
       - name: Export IPA
         script: |
