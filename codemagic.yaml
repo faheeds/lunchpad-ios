@@ -188,8 +188,7 @@ workflows:
             --key-id "$ASC_KEY_ID" \
             --private-key "@file:/tmp/asc_key.p8" \
             --path "$IPA" \
-            --testflight \
-            --beta-groups "Internal Testers"
+            --testflight
 
     artifacts:
       - $CM_BUILD_DIR/ipa/*.ipa
