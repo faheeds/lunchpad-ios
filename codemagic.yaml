@@ -154,6 +154,10 @@ workflows:
 
           keychain add-certificates
 
+          # Wire the downloaded App Store profile into the Xcode project
+          # (switches project to Manual signing with the distribution profile)
+          xcode-project use-profiles
+
       - name: Build iOS archive (Release)
         script: |
           xcodebuild \
@@ -162,12 +166,6 @@ workflows:
             -sdk iphoneos \
             -configuration Release \
             -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath /tmp/asc_key.p8 \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            SKIP_INSTALL=NO \
-            CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             clean archive 2>&1 | tee /tmp/xcodebuild_full.log | xcpretty --color
           BUILD_EXIT=${PIPESTATUS[0]}
