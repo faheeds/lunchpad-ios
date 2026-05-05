@@ -181,18 +181,35 @@ workflows:
 
       - name: Export IPA
         script: |
-          cat > /tmp/ExportOptions.plist << 'EOF'
+          # Read the installed provisioning profile name dynamically
+          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
+          echo "Profile path: $PROFILE_PATH"
+          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" 2>/dev/null | python3 -c "
+import sys, plistlib
+data = plistlib.loads(sys.stdin.buffer.read())
+print(data.get('Name', ''))
+" 2>/dev/null)
+          echo "Profile name: $PROFILE_NAME"
+
+          cat > /tmp/ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>method</key><string>app-store</string>
+            <key>method</key><string>app-store-connect</string>
             <key>teamID</key><string>GUAH9Y367F</string>
             <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key><string>${PROFILE_NAME}</string>
+            </dict>
             <key>uploadSymbols</key><true/>
           </dict>
           </plist>
           EOF
+
+          echo "=== ExportOptions.plist ==="
+          cat /tmp/ExportOptions.plist
 
           xcodebuild \
             -exportArchive \
