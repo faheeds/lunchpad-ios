@@ -4,12 +4,10 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
+    integrations:
+      app_store_connect: Faheed ASC Key
+
     environment:
-      # Automatic code signing — Codemagic reads these three env vars automatically.
-      # Add them in Codemagic → your app → Environment variables (mark Secure):
-      #   APP_STORE_CONNECT_ISSUER_ID       — Issuer ID from App Store Connect API keys page
-      #   APP_STORE_CONNECT_KEY_IDENTIFIER  — Key ID (e.g. ABCD1234EF)
-      #   APP_STORE_CONNECT_PRIVATE_KEY     — Full contents of the .p8 file (including header/footer lines)
       ios_signing:
         distribution_type: app_store
         bundle_identifier: us.lunchpad.app
@@ -114,6 +112,11 @@ workflows:
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
       email:
         recipients:
           - faheed.subhani@gmail.com
