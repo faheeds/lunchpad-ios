@@ -170,8 +170,8 @@ workflows:
             clean archive 2>&1 | tee /tmp/xcodebuild_full.log | xcpretty --color
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
-            echo "=== FULL XCODEBUILD ERRORS ==="
-            grep -E "error:|Error" /tmp/xcodebuild_full.log | grep -v "^2026" | head -40
+            echo "=== LAST 80 LINES OF XCODEBUILD LOG ==="
+            tail -80 /tmp/xcodebuild_full.log
             exit $BUILD_EXIT
           fi
 
