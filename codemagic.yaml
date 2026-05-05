@@ -36,16 +36,27 @@ workflows:
             npx cap add ios
           else
             echo "ios/ already present — skipping cap add"
+            ls ios/
           fi
 
       - name: Sync Capacitor plugins to iOS
         script: npx cap sync ios
 
-      - name: Inspect Xcode scheme
+      - name: Inspect iOS project structure
         script: |
-          SCHEME_FILE=$(find ios -name "App.xcscheme" | head -1)
-          echo "Scheme file: $SCHEME_FILE"
-          cat "$SCHEME_FILE"
+          echo "=== ios/ top level ==="
+          ls -la ios/ 2>/dev/null || echo "ios/ does not exist"
+          echo "=== xcodeproj dirs ==="
+          find ios -name "*.xcodeproj" -type d 2>/dev/null || echo "none"
+          echo "=== xcscheme files ==="
+          find ios -name "*.xcscheme" 2>/dev/null || echo "none"
+          echo "=== xcworkspace dirs ==="
+          find ios -name "*.xcworkspace" -type d 2>/dev/null || echo "none"
+          SCHEME_FILE=$(find ios -name "*.xcscheme" | head -1)
+          if [ -n "$SCHEME_FILE" ]; then
+            echo "=== Scheme content ==="
+            cat "$SCHEME_FILE"
+          fi
 
       - name: Set development team in Xcode project
         script: |
