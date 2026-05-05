@@ -79,16 +79,20 @@ workflows:
 
       - name: Fetch signing certificates and profiles
         script: |
-          # Decode the base64 key — avoids all PEM newline/encoding issues
+          # Decode ASC API key (for Apple auth)
           echo "$ASC_PRIVATE_KEY_B64" | base64 --decode > /tmp/asc_key.p8
-          echo "Key decoded. First line: $(head -1 /tmp/asc_key.p8)"
-          echo "Last line:  $(tail -1 /tmp/asc_key.p8)"
+          echo "ASC key: $(head -1 /tmp/asc_key.p8)"
+
+          # Decode certificate private key (used to create/match the P12)
+          echo "$CERT_KEY_B64" | base64 --decode > /tmp/cert_key.pem
+          echo "Cert key: $(head -1 /tmp/cert_key.pem)"
 
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --issuer-id "$ASC_ISSUER_ID" \
             --key-id "$ASC_KEY_ID" \
             --private-key "@file:/tmp/asc_key.p8" \
+            --certificate-key "@file:/tmp/cert_key.pem" \
             --create
 
           keychain add-certificates
