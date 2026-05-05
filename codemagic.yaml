@@ -181,14 +181,11 @@ workflows:
 
       - name: Export IPA
         script: |
-          # Read the installed provisioning profile name dynamically
+          # Read the installed provisioning profile name dynamically (PlistBuddy avoids YAML/Python issues)
           PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
           echo "Profile path: $PROFILE_PATH"
-          PROFILE_NAME=$(security cms -D -i "$PROFILE_PATH" 2>/dev/null | python3 -c "
-import sys, plistlib
-data = plistlib.loads(sys.stdin.buffer.read())
-print(data.get('Name', ''))
-" 2>/dev/null)
+          security cms -D -i "$PROFILE_PATH" > /tmp/profile.plist 2>/dev/null
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /tmp/profile.plist 2>/dev/null)
           echo "Profile name: $PROFILE_NAME"
 
           cat > /tmp/ExportOptions.plist << EOF
