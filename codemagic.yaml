@@ -42,21 +42,55 @@ workflows:
       - name: Sync Capacitor plugins to iOS
         script: npx cap sync ios
 
-      - name: Inspect iOS project structure
+      - name: Patch scheme ArchiveAction
         script: |
-          echo "=== ios/ top level ==="
-          ls -la ios/ 2>/dev/null || echo "ios/ does not exist"
-          echo "=== xcodeproj dirs ==="
-          find ios -name "*.xcodeproj" -type d 2>/dev/null || echo "none"
-          echo "=== xcscheme files ==="
-          find ios -name "*.xcscheme" 2>/dev/null || echo "none"
-          echo "=== xcworkspace dirs ==="
-          find ios -name "*.xcworkspace" -type d 2>/dev/null || echo "none"
-          SCHEME_FILE=$(find ios -name "*.xcscheme" | head -1)
-          if [ -n "$SCHEME_FILE" ]; then
-            echo "=== Scheme content ==="
-            cat "$SCHEME_FILE"
-          fi
+          SCHEME_FILE=$(find ios -name "App.xcscheme" | grep "xcshareddata" | head -1)
+          echo "Patching: $SCHEME_FILE"
+          python3 - "$SCHEME_FILE" << 'PYEOF'
+          import sys, re
+
+          f = sys.argv[1]
+          with open(f) as fh:
+              content = fh.read()
+
+          # Check if ArchiveAction already has a buildable
+          archive_section = re.search(r'<ArchiveAction.*?</ArchiveAction>', content, re.DOTALL)
+          if archive_section and 'BuildableProductRunnable' in archive_section.group(0):
+              print("ArchiveAction already has BuildableProductRunnable — skipping")
+              sys.exit(0)
+
+          # Find the App target BlueprintIdentifier (from App.xcodeproj, not Pods)
+          match = re.search(
+              r'<BuildableReference\s[^>]*BlueprintIdentifier\s*=\s*"([^"]+)"[^>]*BlueprintName\s*=\s*"App"[^>]*ReferencedContainer\s*=\s*"container:App\.xcodeproj"',
+              content, re.DOTALL)
+          if not match:
+              print("Could not find App BlueprintIdentifier — skipping patch")
+              sys.exit(0)
+
+          blueprint_id = match.group(1)
+          print(f"Found blueprint ID: {blueprint_id}")
+
+          runnable = f'''      <BuildableProductRunnable
+               runnableDebuggingMode = "0">
+               <BuildableReference
+                  BuildableIdentifier = "primary"
+                  BlueprintIdentifier = "{blueprint_id}"
+                  BuildableName = "App.app"
+                  BlueprintName = "App"
+                  ReferencedContainer = "container:App.xcodeproj">
+               </BuildableReference>
+            </BuildableProductRunnable>
+            '''
+
+          new_content = re.sub(
+              r'(<ArchiveAction[^>]*>)\s*</ArchiveAction>',
+              r'\1\n' + runnable + '\n   </ArchiveAction>',
+              content)
+
+          with open(f, 'w') as fh:
+              fh.write(new_content)
+          print("Patched ArchiveAction successfully")
+          PYEOF
 
       - name: Set development team in Xcode project
         script: |
@@ -122,6 +156,10 @@ workflows:
             -sdk iphoneos \
             -configuration Release \
             -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath /tmp/asc_key.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             SKIP_INSTALL=NO \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
