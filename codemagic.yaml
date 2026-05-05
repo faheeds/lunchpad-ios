@@ -144,6 +144,10 @@ workflows:
           echo "$CERT_KEY_B64" | base64 --decode > /tmp/cert_key.pem
           echo "Cert key: $(head -1 /tmp/cert_key.pem)"
 
+          # Create a CI-safe keychain with codesign partition list set
+          # (without this, errSecInternalComponent blocks codesign in headless mode)
+          keychain initialize
+
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
             --issuer-id "$ASC_ISSUER_ID" \
