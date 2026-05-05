@@ -96,16 +96,24 @@ workflows:
             --workspace "$XCODE_WORKSPACE" \
             --config Release
 
+      - name: Upload to TestFlight
+        script: |
+          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
+          echo "Uploading $IPA to TestFlight..."
+          app-store-connect publish \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
+            --path "$IPA" \
+            --testflight \
+            --beta-groups "Internal Testers"
+
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
-      app_store_connect:
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
       email:
         recipients:
           - faheed.subhani@gmail.com
