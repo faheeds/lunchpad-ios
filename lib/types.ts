@@ -1,0 +1,70 @@
+export type School = {
+  id: string;
+  name: string;
+  timezone: string;
+};
+
+export type MenuOption = {
+  id: string;
+  name: string;
+  optionType: string;
+  priceDeltaCents: number;
+};
+
+export type MenuItem = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  basePriceCents: number;
+  options: MenuOption[];
+};
+
+export type DeliveryDateWithMenu = {
+  id: string;
+  schoolId: string;
+  deliveryDate: string;
+  cutoffAt: string;
+  orderingOpen: boolean;
+  school: School;
+  soldOut: string[];
+  menuItems: MenuItem[];
+};
+
+export type CartItem = {
+  menuItemId: string;
+  itemName: string;
+  basePriceCents: number;
+  additions: string[];
+  removals: string[];
+  allergyNotes?: string;
+  lineTotalCents: number;
+};
+
+export type Child = {
+  id: string;
+  schoolId: string;
+  schoolName: string;
+  studentName: string;
+  grade: string;
+  allergyNotes: string;
+};
+
+export type Parent = {
+  id: string;
+  email: string;
+  name: string | null;
+  children: Child[];
+};
+
+export type OrderHistoryItem = {
+  id: string;
+  orderNumber: string;
+  status: string;
+  deliveryDate: string;
+  schoolName: string;
+  totalCents: number;
+  createdAt: string;
+  items: { name: string; lineTotalCents: number; additions: string[]; removals: string[] }[];
+};

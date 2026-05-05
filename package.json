@@ -1,23 +1,41 @@
 {
   "name": "lunchpad-ios",
   "version": "1.0.0",
-  "description": "LunchPad — iOS companion app (Capacitor shell)",
-  "private": true,
+  "main": "expo-router/entry",
   "scripts": {
-    "sync": "npx cap sync ios",
-    "open": "npx cap open ios",
-    "lint": "tsc --noEmit"
+    "start": "expo start",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
+    "build:ios": "eas build --platform ios --profile production",
+    "submit:ios": "eas submit --platform ios"
   },
   "dependencies": {
-    "@capacitor/core": "^7.2.0",
-    "@capacitor/preferences": "^7.0.0",
-    "@capacitor-community/apple-sign-in": "^7.0.0",
-    "@capacitor/haptics": "^7.0.0",
-    "@capacitor/status-bar": "^7.0.0"
+    "@expo/metro-runtime": "~6.1.2",
+    "@expo/vector-icons": "^15.0.3",
+    "@tanstack/react-query": "^5.0.0",
+    "expo": "~54.0.0",
+    "expo-apple-authentication": "~8.0.8",
+    "expo-asset": "~12.0.13",
+    "expo-constants": "~18.0.13",
+    "expo-font": "~14.0.11",
+    "expo-linking": "~8.0.12",
+    "expo-router": "~6.0.23",
+    "expo-secure-store": "~15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "expo-system-ui": "~6.0.9",
+    "expo-web-browser": "~15.0.11",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-web": "^0.21.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.2.0",
-    "@capacitor/ios": "^7.2.0",
-    "typescript": "^5.4.0"
-  }
+    "@babel/core": "^7.24.0",
+    "@types/react": "~18.3.0",
+    "typescript": "^5.3.0"
+  },
+  "private": true
 }
