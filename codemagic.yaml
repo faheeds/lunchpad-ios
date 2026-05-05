@@ -44,6 +44,14 @@ workflows:
       - name: Sync Capacitor plugins to iOS
         script: npx cap sync ios
 
+      - name: Set development team in Xcode project
+        script: |
+          PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
+          sed -i '' "s/DEVELOPMENT_TEAM = \"\"/DEVELOPMENT_TEAM = $TEAM_ID/g" "$PBXPROJ"
+          sed -i '' "s/CODE_SIGN_STYLE = Debug/CODE_SIGN_STYLE = Automatic/g" "$PBXPROJ"
+          sed -i '' "s/CODE_SIGN_STYLE = Release/CODE_SIGN_STYLE = Automatic/g" "$PBXPROJ"
+          echo "Team ID injected into project.pbxproj"
+
       - name: Add Sign In with Apple + Push entitlements
         script: |
           ENTITLEMENTS="ios/App/App/App.entitlements"
@@ -80,6 +88,7 @@ workflows:
 
       - name: Build iOS archive (Release)
         script: |
+          set -o pipefail
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
