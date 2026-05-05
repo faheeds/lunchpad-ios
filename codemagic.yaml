@@ -162,57 +162,21 @@ workflows:
           # (switches project to Manual signing with the distribution profile)
           xcode-project use-profiles
 
-      - name: Build iOS archive (Release)
+      - name: Build and export IPA
         script: |
-          xcodebuild \
-            -workspace "$XCODE_WORKSPACE" \
-            -scheme "$XCODE_SCHEME" \
-            -sdk iphoneos \
-            -configuration Release \
-            -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            clean archive 2>&1 | tee /tmp/xcodebuild_full.log | xcpretty --color
+          # xcode-project build-ipa handles archive + export in one step and
+          # automatically uses the profile wired in by xcode-project use-profiles.
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME" \
+            --archive-xcargs "DEVELOPMENT_TEAM=$TEAM_ID" \
+            --export-xcargs "DEVELOPMENT_TEAM=$TEAM_ID" \
+            --ipa-directory "$CM_BUILD_DIR/ipa" 2>&1 | tee /tmp/xcodebuild_full.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
-            echo "=== LAST 80 LINES OF XCODEBUILD LOG ==="
+            echo "=== LAST 80 LINES OF BUILD LOG ==="
             tail -80 /tmp/xcodebuild_full.log
             exit $BUILD_EXIT
-          fi
-
-      - name: Export IPA
-        script: |
-          # Dump any installed profiles for diagnostics
-          echo "=== Installed provisioning profiles ==="
-          find ~/Library/MobileDevice/Provisioning\ Profiles -name "*.mobileprovision" 2>/dev/null || echo "(none found)"
-
-          # Use automatic signingStyle — the archive already has the profile embedded,
-          # so xcodebuild can re-sign without needing us to locate the .mobileprovision file.
-          cat > /tmp/ExportOptions.plist << 'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>teamID</key><string>GUAH9Y367F</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>uploadSymbols</key><true/>
-          </dict>
-          </plist>
-          PLIST
-
-          echo "=== ExportOptions.plist ==="
-          cat /tmp/ExportOptions.plist
-
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
-            -exportPath "$CM_BUILD_DIR/ipa" \
-            -exportOptionsPlist /tmp/ExportOptions.plist 2>&1 | tee /tmp/export.log
-          EXPORT_EXIT=${PIPESTATUS[0]}
-          if [ $EXPORT_EXIT -ne 0 ]; then
-            echo "=== EXPORT LOG ==="
-            cat /tmp/export.log
-            exit $EXPORT_EXIT
           fi
 
       - name: Upload to TestFlight
@@ -229,7 +193,7 @@ workflows:
 
     artifacts:
       - $CM_BUILD_DIR/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
+      - /tmp/xcodebuild_full.log
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
