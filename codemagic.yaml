@@ -44,8 +44,14 @@ workflows:
 
       - name: Patch scheme ArchiveAction
         script: |
-          SCHEME_FILE=$(find ios -name "App.xcscheme" | grep "xcshareddata" | head -1)
+          echo "=== All xcscheme files found ==="
+          find ios -name "*.xcscheme" 2>/dev/null
+          SCHEME_FILE=$(find ios -name "App.xcscheme" | head -1)
           echo "Patching: $SCHEME_FILE"
+          if [ -z "$SCHEME_FILE" ]; then
+            echo "No scheme file found — skipping patch"
+            exit 0
+          fi
           python3 - "$SCHEME_FILE" << 'PYEOF'
           import sys, re
 
