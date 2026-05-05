@@ -181,22 +181,30 @@ workflows:
 
       - name: Export IPA
         script: |
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
-            -exportPath "$CM_BUILD_DIR/ipa" \
-            -exportOptionsPlist /dev/stdin << 'EOF'
+          cat > /tmp/ExportOptions.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store</string>
             <key>teamID</key><string>GUAH9Y367F</string>
+            <key>signingStyle</key><string>manual</string>
             <key>uploadSymbols</key><true/>
-            <key>compileBitcode</key><false/>
           </dict>
           </plist>
           EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
+            -exportPath "$CM_BUILD_DIR/ipa" \
+            -exportOptionsPlist /tmp/ExportOptions.plist 2>&1 | tee /tmp/export.log
+          EXPORT_EXIT=${PIPESTATUS[0]}
+          if [ $EXPORT_EXIT -ne 0 ]; then
+            echo "=== EXPORT LOG ==="
+            cat /tmp/export.log
+            exit $EXPORT_EXIT
+          fi
 
       - name: Upload to TestFlight
         script: |
