@@ -8,10 +8,6 @@ workflows:
       app_store_connect: Faheed ASC Key
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: us.lunchpad.app
-
       vars:
         BUNDLE_ID: us.lunchpad.app
         TEAM_ID: GUAH9Y367F
@@ -80,6 +76,18 @@ workflows:
         script: |
           cd ios/App
           pod install
+
+      - name: Fetch signing certificates and profiles
+        script: |
+          # Uses @env: syntax — reads key directly from the integration env var,
+          # no file writing needed, no PEM format issues
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
+            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            --private-key "@env:APP_STORE_CONNECT_PRIVATE_KEY" \
+            --create
+          keychain add-certificates
 
       - name: Build iOS archive (Release)
         script: |
