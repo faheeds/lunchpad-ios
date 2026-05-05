@@ -4,17 +4,18 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
-    # App Store Connect API key — register once in Codemagic:
-    # Teams → Integrations → Apple Developer Portal → Add
-    # Name it exactly "Faheed ASC Key"
-    integrations:
-      app_store_connect: Faheed ASC Key
-
     environment:
-      # Automatic code signing via App Store Connect API
+      # Automatic code signing — Codemagic reads these three env vars automatically.
+      # Add them in Codemagic → your app → Environment variables (mark Secure):
+      #   APP_STORE_CONNECT_ISSUER_ID       — Issuer ID from App Store Connect API keys page
+      #   APP_STORE_CONNECT_KEY_IDENTIFIER  — Key ID (e.g. ABCD1234EF)
+      #   APP_STORE_CONNECT_PRIVATE_KEY     — Full contents of the .p8 file (including header/footer lines)
       ios_signing:
         distribution_type: app_store
         bundle_identifier: us.lunchpad.app
+
+      groups:
+        - app_store
 
       vars:
         BUNDLE_ID: us.lunchpad.app
@@ -102,7 +103,7 @@ workflows:
 
     publishing:
       app_store_connect:
-        auth: integration
+        auth: environment_variables
         submit_to_testflight: true
         beta_groups:
           - Internal Testers
