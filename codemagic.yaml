@@ -4,10 +4,10 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
 
-    integrations:
-      app_store_connect: Faheed ASC Key
-
     environment:
+      groups:
+        - signing        # contains ASC_PRIVATE_KEY_B64, ASC_KEY_ID, ASC_ISSUER_ID
+
       vars:
         BUNDLE_ID: us.lunchpad.app
         TEAM_ID: GUAH9Y367F
@@ -79,14 +79,18 @@ workflows:
 
       - name: Fetch signing certificates and profiles
         script: |
-          # Uses @env: syntax — reads key directly from the integration env var,
-          # no file writing needed, no PEM format issues
+          # Decode the base64 key — avoids all PEM newline/encoding issues
+          echo "$ASC_PRIVATE_KEY_B64" | base64 --decode > /tmp/asc_key.p8
+          echo "Key decoded. First line: $(head -1 /tmp/asc_key.p8)"
+          echo "Last line:  $(tail -1 /tmp/asc_key.p8)"
+
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            --private-key "@env:APP_STORE_CONNECT_PRIVATE_KEY" \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --key-id "$ASC_KEY_ID" \
+            --private-key "@file:/tmp/asc_key.p8" \
             --create
+
           keychain add-certificates
 
       - name: Build iOS archive (Release)
@@ -127,6 +131,9 @@ workflows:
           IPA=$(find "$CM_BUILD_DIR/ipa" -name "*.ipa" | head -1)
           echo "Uploading $IPA to TestFlight..."
           app-store-connect publish \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --key-id "$ASC_KEY_ID" \
+            --private-key "@file:/tmp/asc_key.p8" \
             --path "$IPA" \
             --testflight \
             --beta-groups "Internal Testers"
