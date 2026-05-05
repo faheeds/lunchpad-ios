@@ -8,15 +8,12 @@ workflows:
       app_store_connect: Faheed ASC Key
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: us.lunchpad.app
-
       groups:
         - app_store
 
       vars:
         BUNDLE_ID: us.lunchpad.app
+        TEAM_ID: GUAH9Y367F
         XCODE_WORKSPACE: ios/App/App.xcworkspace
         XCODE_SCHEME: App
 
@@ -75,28 +72,51 @@ workflows:
           cd ios/App
           pod install
 
+      - name: Save ASC API key for xcodebuild
+        script: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > \
+            ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8
+
       - name: Build iOS archive (Release)
         script: |
-          xcode-project use-profiles
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
             -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
             -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=YES \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8 \
+            -authenticationKeyID "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
+            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
             clean archive \
             | xcpretty --color
 
       - name: Export IPA
         script: |
-          xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
-            --config Release
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
+            -exportPath "$CM_BUILD_DIR/ipa" \
+            -exportOptionsPlist /dev/stdin << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>GUAH9Y367F</string>
+            <key>uploadSymbols</key><true/>
+            <key>compileBitcode</key><false/>
+          </dict>
+          </plist>
+          EOF
 
       - name: Upload to TestFlight
         script: |
-          IPA=$(find build/ios/ipa -name "*.ipa" | head -1)
+          IPA=$(find "$CM_BUILD_DIR/ipa" -name "*.ipa" | head -1)
           echo "Uploading $IPA to TestFlight..."
           app-store-connect publish \
             --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
@@ -107,16 +127,11 @@ workflows:
             --beta-groups "Internal Testers"
 
     artifacts:
-      - build/ios/ipa/*.ipa
+      - $CM_BUILD_DIR/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
       email:
         recipients:
           - faheed.subhani@gmail.com
