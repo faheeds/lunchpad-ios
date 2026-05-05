@@ -8,8 +8,9 @@ workflows:
       app_store_connect: Faheed ASC Key
 
     environment:
-      groups:
-        - app_store
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: us.lunchpad.app
 
       vars:
         BUNDLE_ID: us.lunchpad.app
@@ -80,15 +81,6 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Save ASC API key for xcodebuild
-        script: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          # printf + sed handles both actual newlines and literal \n in the env var
-          printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" \
-            | sed 's/\\n/\n/g' \
-            > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8
-          echo "Key written — first line: $(head -1 ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8)"
-
       - name: Build iOS archive (Release)
         script: |
           set -o pipefail
@@ -98,10 +90,6 @@ workflows:
             -configuration Release \
             -archivePath "$CM_BUILD_DIR/LunchPad.xcarchive" \
             -destination "generic/platform=iOS" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_IDENTIFIER}.p8 \
-            -authenticationKeyID "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            -authenticationKeyIssuerID "$APP_STORE_CONNECT_ISSUER_ID" \
             CODE_SIGN_STYLE=Automatic \
             DEVELOPMENT_TEAM="$TEAM_ID" \
             clean archive \
@@ -131,9 +119,6 @@ workflows:
           IPA=$(find "$CM_BUILD_DIR/ipa" -name "*.ipa" | head -1)
           echo "Uploading $IPA to TestFlight..."
           app-store-connect publish \
-            --issuer-id "$APP_STORE_CONNECT_ISSUER_ID" \
-            --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" \
-            --private-key "$APP_STORE_CONNECT_PRIVATE_KEY" \
             --path "$IPA" \
             --testflight \
             --beta-groups "Internal Testers"
