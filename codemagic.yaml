@@ -181,29 +181,24 @@ workflows:
 
       - name: Export IPA
         script: |
-          # Read the installed provisioning profile name dynamically (PlistBuddy avoids YAML/Python issues)
-          PROFILE_PATH=$(ls ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision 2>/dev/null | head -1)
-          echo "Profile path: $PROFILE_PATH"
-          security cms -D -i "$PROFILE_PATH" > /tmp/profile.plist 2>/dev/null
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /tmp/profile.plist 2>/dev/null)
-          echo "Profile name: $PROFILE_NAME"
+          # Dump any installed profiles for diagnostics
+          echo "=== Installed provisioning profiles ==="
+          find ~/Library/MobileDevice/Provisioning\ Profiles -name "*.mobileprovision" 2>/dev/null || echo "(none found)"
 
-          cat > /tmp/ExportOptions.plist << EOF
+          # Use automatic signingStyle — the archive already has the profile embedded,
+          # so xcodebuild can re-sign without needing us to locate the .mobileprovision file.
+          cat > /tmp/ExportOptions.plist << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store-connect</string>
             <key>teamID</key><string>GUAH9Y367F</string>
-            <key>signingStyle</key><string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>${BUNDLE_ID}</key><string>${PROFILE_NAME}</string>
-            </dict>
+            <key>signingStyle</key><string>automatic</string>
             <key>uploadSymbols</key><true/>
           </dict>
           </plist>
-          EOF
+          PLIST
 
           echo "=== ExportOptions.plist ==="
           cat /tmp/ExportOptions.plist
