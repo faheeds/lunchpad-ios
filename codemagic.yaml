@@ -183,12 +183,13 @@ workflows:
         script: |
           IPA=$(find "$CM_BUILD_DIR/ipa" -name "*.ipa" | head -1)
           echo "Uploading $IPA to TestFlight..."
+          # --testflight submits for external beta review (requires metadata in App Store Connect).
+          # Omitting it uploads the build and makes it available to internal testers automatically.
           app-store-connect publish \
             --issuer-id "$ASC_ISSUER_ID" \
             --key-id "$ASC_KEY_ID" \
             --private-key "@file:/tmp/asc_key.p8" \
-            --path "$IPA" \
-            --testflight
+            --path "$IPA"
 
     artifacts:
       - $CM_BUILD_DIR/ipa/*.ipa
