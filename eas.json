@@ -21,7 +21,8 @@
     },
     "production": {
       "ios": {
-        "resourceClass": "m-medium"
+        "resourceClass": "m-medium",
+        "autoIncrement": "buildNumber"
       },
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
