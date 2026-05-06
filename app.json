@@ -36,6 +36,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "1b47df76-dfdf-41ed-934b-6017f2ae6e81"
+      }
+    },
+    "owner": "getlunchpad"
   }
 }
