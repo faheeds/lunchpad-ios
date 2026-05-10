@@ -12,16 +12,18 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Linking,
   SafeAreaView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
+import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
 import { fetchAccount, createOrder, getJWT } from "../../lib/api";
 import type { Child } from "../../lib/types";
 
 export default function CartScreen() {
+  const router = useRouter();
   const items = useCart((s) => s.items);
   const deliveryDateId = useCart((s) => s.deliveryDateId);
   const schoolId = useCart((s) => s.schoolId);
@@ -86,7 +88,35 @@ export default function CartScreen() {
       });
 
       clearCart();
-      await Linking.openURL(checkoutUrl);
+
+      // Open Stripe inside the app via SFSafariViewController, not in
+      // an external Safari tab. openAuthSessionAsync returns when the
+      // browser session ends — either because Stripe redirected to our
+      // `lunchpad://` deep-link scheme, or because the user dismissed
+      // the sheet. We pass the deep-link as the second arg so iOS knows
+      // to dismiss the sheet automatically when Stripe redirects there.
+      const result = await WebBrowser.openAuthSessionAsync(
+        checkoutUrl,
+        "lunchpad://checkout/success",
+      );
+
+      if (result.type === "success" && result.url) {
+        // Stripe redirected → /api/mobile/native/order/success → lunchpad://
+        // Parse the orderId off the deep-link and route to the in-app
+        // confirmation screen.
+        const url = result.url;
+        const match = url.match(/[?&]orderId=([^&]+)/);
+        const orderId = match ? decodeURIComponent(match[1]) : "";
+        if (url.includes("/checkout/success")) {
+          router.replace({ pathname: "/checkout/success", params: { orderId } });
+        } else if (url.includes("/checkout/cancel")) {
+          // Customer cancelled — silently bring them back to cart;
+          // their items were already cleared at the top of this
+          // function so we just sit idle.
+        }
+      }
+      // If type is "cancel" or "dismiss" the user closed the sheet
+      // before completing payment. No-op; cart is already cleared.
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Checkout failed.");
     } finally {
