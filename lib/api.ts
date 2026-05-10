@@ -45,14 +45,31 @@ async function buildHeaders(auth = true): Promise<Record<string, string>> {
   return h;
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, { headers: await buildHeaders(true) });
+/**
+ * Common response handler. If the server returns 401, the JWT is no longer
+ * valid against the current tenant — possible reasons:
+ *   - Token expired
+ *   - User changed school codes (token is for a different restaurant)
+ *   - Backend rolled per-tenant scoping; old token's tenant doesn't match
+ * In all cases the right move is to clear the JWT so the app's auth gate
+ * routes the user back to sign-in. We re-throw the error so the caller
+ * still sees the failure.
+ */
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    await clearJWT();
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+export async function apiGet<T>(path: string): Promise<T> {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}${path}`, { headers: await buildHeaders(true) });
+  return handleResponse<T>(res);
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
@@ -62,11 +79,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: await buildHeaders(true),
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
+  return handleResponse<T>(res);
 }
 
 // ── School code validation ───────────────────────────────────────────────────
