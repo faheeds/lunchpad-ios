@@ -19,6 +19,7 @@ import { useRouter } from "expo-router";
 import { validateSchoolCode, setSchoolCode, setStoredBaseUrl, getJWT } from "../../lib/api";
 import { useRefreshTheme } from "../../lib/theme-context";
 import { useTheme } from "../../lib/theme";
+import { BrandMark } from "../../components/BrandMark";
 
 export default function SchoolCodeScreen() {
   const [code, setCode] = useState("");
@@ -65,7 +66,6 @@ export default function SchoolCodeScreen() {
 
   // Theme is neutral on first visit (no tenant connected yet) but tracks
   // the current tenant if the user comes back here via "Change school".
-  const hasLogo = Boolean(theme.logoUrl);
 
   return (
     <KeyboardAvoidingView
@@ -73,23 +73,17 @@ export default function SchoolCodeScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.inner}>
-        {/* Logo / wordmark — uploaded restaurant logo if available, else
-            the LunchPad mark (cloche-on-brand SVG). Falls back to amoji
-            only if neither is available, which shouldn't happen in
-            production. */}
+        {/* Logo + wordmark. BrandMark renders the active restaurant's
+            uploaded logo if present, else the bundled LunchPad icon —
+            no more emoji placeholder. */}
         <View style={styles.logoContainer}>
-          {hasLogo ? (
-            <Image
-              source={{ uri: theme.logoUrl! }}
-              style={[styles.logoBox, { backgroundColor: theme.primary }]}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={[styles.logoBox, { backgroundColor: theme.primary }]}>
-              <Text style={[styles.logoText, { color: theme.textOnPrimary }]}>🍽️</Text>
-            </View>
-          )}
-          <Text style={[styles.appName, { color: theme.textPrimary }]}>
+          <BrandMark size={72} radius={18} />
+          <Text
+            style={[
+              styles.appName,
+              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+            ]}
+          >
             {theme.restaurant?.name ?? "LunchPad"}
           </Text>
           <Text style={[styles.tagline, { color: theme.textSecondary }]}>
@@ -99,7 +93,12 @@ export default function SchoolCodeScreen() {
 
         {/* Card */}
         <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>
+          <Text
+            style={[
+              styles.cardTitle,
+              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+            ]}
+          >
             Connect to your lunch program
           </Text>
           <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>

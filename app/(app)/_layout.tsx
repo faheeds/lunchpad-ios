@@ -1,17 +1,39 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "../../lib/store";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Animated } from "react-native";
+import { useEffect, useRef } from "react";
 import { useTheme } from "../../lib/theme";
 
+/**
+ * Cart-count badge with a subtle pulse animation on count change. When
+ * the user taps "Add to cart" anywhere in the app, the badge briefly
+ * scales up and back — gives a tactile sense that the action took effect.
+ */
 function CartBadge() {
   const count = useCart((s) => s.count());
   const theme = useTheme();
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (count === 0) return;
+    Animated.sequence([
+      Animated.spring(scale, { toValue: 1.3, useNativeDriver: true, friction: 4 }),
+      Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }),
+    ]).start();
+  }, [count, scale]);
+
   if (count === 0) return null;
   return (
-    <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+    <Animated.View
+      style={[
+        styles.badge,
+        { backgroundColor: theme.primary, transform: [{ scale }] },
+      ]}
+      accessibilityLabel={`${count} items in cart`}
+    >
       <Text style={[styles.badgeText, { color: theme.textOnPrimary }]}>{count}</Text>
-    </View>
+    </Animated.View>
   );
 }
 

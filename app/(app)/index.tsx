@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates } from "../../lib/api";
 import type { DeliveryDateWithMenu } from "../../lib/types";
 import { useTheme } from "../../lib/theme";
+import { BrandMark } from "../../components/BrandMark";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -119,28 +120,23 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <View style={styles.header}>
-        {/* Restaurant branding row — logo (if available) + name. Sits
-            above the section label so the restaurant gets top billing. */}
+        {/* Restaurant branding row — logo + name. Always shows the
+            BrandMark; falls back to LunchPad icon when no tenant logo. */}
         <View style={styles.brandRow}>
-          {theme.logoUrl && (
-            <Image
-              source={{ uri: theme.logoUrl }}
-              style={[styles.brandLogo, { backgroundColor: theme.primary }]}
-              resizeMode="cover"
-            />
-          )}
+          <BrandMark size={28} radius={7} />
           <Text
-            style={[
-              styles.brandName,
-              { color: theme.textPrimary },
-              !theme.logoUrl && styles.brandNameNoLogo,
-            ]}
+            style={[styles.brandName, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
             numberOfLines={1}
           >
             {restaurantName ?? "LunchPad"}
           </Text>
         </View>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
+        <Text
+          style={[
+            styles.headerTitle,
+            { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+          ]}
+        >
           Upcoming lunches
         </Text>
         <Text style={[styles.headerSub, { color: theme.textMuted }]}>

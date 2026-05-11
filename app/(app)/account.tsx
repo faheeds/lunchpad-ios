@@ -20,6 +20,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { fetchAccount, fetchOrders, addChild, getSchoolCode } from "../../lib/api";
 import { signOut, isSignedIn } from "../../lib/auth";
 import { formatPrice } from "../../lib/store";
+import { useTheme } from "../../lib/theme";
+import { useRefreshTheme } from "../../lib/theme-context";
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -32,6 +34,8 @@ function formatDate(iso: string) {
 export default function AccountScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const refreshTheme = useRefreshTheme();
 
   const { data: account, isLoading: loadingAccount } = useQuery({
     queryKey: ["account"],
@@ -85,7 +89,11 @@ export default function AccountScreen() {
         onPress: async () => {
           await signOut();
           queryClient.clear();
-          router.replace("/(auth)/sign-in");
+          // signOut() cleared the brand cache + school code; refresh the
+          // theme so the auth screen renders in neutral LunchPad colors
+          // rather than the previous tenant's brand.
+          await refreshTheme();
+          router.replace("/(auth)");
         },
       },
     ]);
@@ -94,47 +102,69 @@ export default function AccountScreen() {
   const signedIn = !!account;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <SafeAreaView>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Account</Text>
+          <Text
+            style={[styles.headerTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+          >
+            Account
+          </Text>
+          {theme.restaurant && (
+            <Text style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
+              Signed in to {theme.restaurant.name}
+            </Text>
+          )}
         </View>
       </SafeAreaView>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Profile section */}
-        <View style={styles.section}>
+        <View style={[styles.section, { backgroundColor: theme.surface }]}>
           {loadingAccount ? (
-            <ActivityIndicator color="#f59e0b" />
+            <ActivityIndicator color={theme.primary} />
           ) : account ? (
             <>
               <View style={styles.profileRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
+                <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+                  <Text style={[styles.avatarText, { color: theme.textOnPrimary }]}>
                     {(account.name ?? account.email)[0].toUpperCase()}
                   </Text>
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{account.name ?? "Parent"}</Text>
-                  <Text style={styles.profileEmail}>{account.email}</Text>
+                  <Text style={[styles.profileName, { color: theme.textPrimary }]}>
+                    {account.name ?? "Parent"}
+                  </Text>
+                  <Text style={[styles.profileEmail, { color: theme.textSecondary }]}>
+                    {account.email}
+                  </Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-                <Ionicons name="log-out-outline" size={16} color="#f87171" />
-                <Text style={styles.signOutText}>Sign out</Text>
+              <TouchableOpacity
+                style={styles.signOutBtn}
+                onPress={handleSignOut}
+                accessibilityLabel="Sign out"
+                accessibilityRole="button"
+              >
+                <Ionicons name="log-out-outline" size={16} color={theme.danger} />
+                <Text style={[styles.signOutText, { color: theme.danger }]}>Sign out</Text>
               </TouchableOpacity>
             </>
           ) : (
             <View style={styles.guestBox}>
-              <Text style={styles.guestTitle}>Signed in as guest</Text>
-              <Text style={styles.guestSub}>
+              <Text style={[styles.guestTitle, { color: theme.textPrimary }]}>
+                Signed in as guest
+              </Text>
+              <Text style={[styles.guestSub, { color: theme.textSecondary }]}>
                 Sign in to save children's profiles and see order history.
               </Text>
               <TouchableOpacity
-                style={styles.signInBtn}
+                style={[styles.signInBtn, { backgroundColor: theme.primary }]}
                 onPress={() => router.push("/(auth)/sign-in")}
               >
-                <Text style={styles.signInText}>Sign in with Apple</Text>
+                <Text style={[styles.signInText, { color: theme.textOnPrimary }]}>
+                  Sign in with Apple
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -223,40 +253,76 @@ export default function AccountScreen() {
           </View>
         )}
 
-        {/* Order history */}
+        {/* Order history — redesigned cards: status pill with semantic color,
+            item names front-and-centre, restaurant name + date subline,
+            total weighted to the right like a receipt. */}
         {account && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Order history</Text>
+          <View style={[styles.section, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
+              Order history
+            </Text>
             {loadingOrders ? (
-              <ActivityIndicator color="#f59e0b" />
+              <ActivityIndicator color={theme.primary} />
             ) : !orders?.length ? (
-              <Text style={styles.emptyText}>No orders yet.</Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                No orders yet.
+              </Text>
             ) : (
-              orders.map((order) => (
-                <View key={order.id} style={styles.orderCard}>
-                  <View style={styles.orderHeader}>
-                    <Text style={styles.orderNumber}>#{order.orderNumber}</Text>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        order.status === "PAID" && styles.statusPaid,
-                      ]}
-                    >
-                      <Text style={styles.statusText}>{order.status}</Text>
+              orders.map((order) => {
+                const statusColor =
+                  order.status === "PAID" ? theme.success
+                  : order.status === "REFUNDED" ? theme.danger
+                  : order.status === "CANCELLED" ? theme.textMuted
+                  : theme.warning;
+                const statusLabel =
+                  order.status === "PAID" ? "Confirmed"
+                  : order.status === "PENDING" ? "Pending"
+                  : order.status === "REFUNDED" ? "Refunded"
+                  : "Cancelled";
+                const itemSummary = order.items
+                  .map((i) => i.name)
+                  .slice(0, 2)
+                  .join(", ") + (order.items.length > 2 ? ` + ${order.items.length - 2} more` : "");
+                return (
+                  <View
+                    key={order.id}
+                    style={[
+                      styles.orderCard,
+                      { backgroundColor: theme.dark, borderColor: theme.surface },
+                    ]}
+                  >
+                    {/* Header row: status pill + total */}
+                    <View style={styles.orderHeader}>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          { backgroundColor: `${statusColor}22` },
+                        ]}
+                      >
+                        <Text style={[styles.statusText, { color: statusColor }]}>
+                          {statusLabel}
+                        </Text>
+                      </View>
+                      <Text style={[styles.orderTotal, { color: theme.textPrimary }]}>
+                        {formatPrice(order.totalCents)}
+                      </Text>
                     </View>
-                  </View>
-                  <Text style={styles.orderDate}>
-                    {formatDate(order.deliveryDate)} · {order.schoolName}
-                  </Text>
-                  {order.items.map((item, i) => (
-                    <Text key={i} style={styles.orderItem}>
-                      {item.name}
-                      {item.additions.length > 0 ? ` (+${item.additions.join(", ")})` : ""}
+
+                    {/* Items */}
+                    <Text style={[styles.orderItems, { color: theme.textPrimary }]} numberOfLines={2}>
+                      {itemSummary}
                     </Text>
-                  ))}
-                  <Text style={styles.orderTotal}>{formatPrice(order.totalCents)}</Text>
-                </View>
-              ))
+
+                    {/* Meta row: date · school · order # */}
+                    <Text style={[styles.orderMeta, { color: theme.textMuted }]}>
+                      {formatDate(order.deliveryDate)} · {order.schoolName}
+                      <Text style={[styles.orderRef, { color: theme.textMuted }]}>
+                        {"   #" + order.orderNumber.slice(-6)}
+                      </Text>
+                    </Text>
+                  </View>
+                );
+              })
             )}
           </View>
         )}
@@ -265,9 +331,13 @@ export default function AccountScreen() {
         <TouchableOpacity
           style={styles.changeSchoolBtn}
           onPress={() => router.replace("/(auth)")}
+          accessibilityLabel="Change school or restaurant"
+          accessibilityRole="button"
         >
-          <Ionicons name="school-outline" size={16} color="#64748b" />
-          <Text style={styles.changeSchoolText}>Change school</Text>
+          <Ionicons name="school-outline" size={16} color={theme.textSecondary} />
+          <Text style={[styles.changeSchoolText, { color: theme.textSecondary }]}>
+            Change school
+          </Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
@@ -377,28 +447,26 @@ const styles = StyleSheet.create({
   addChildBtnDisabled: { opacity: 0.4 },
   addChildBtnText: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
   orderCard: {
-    backgroundColor: "#0f172a",
-    borderRadius: 10,
-    padding: 12,
-    gap: 4,
+    borderRadius: 12,
+    padding: 14,
+    gap: 8,
+    borderWidth: 1,
   },
   orderHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  orderNumber: { fontSize: 14, fontWeight: "700", color: "#f1f5f9" },
   statusBadge: {
-    backgroundColor: "#334155",
-    borderRadius: 6,
-    paddingHorizontal: 8,
+    borderRadius: 100,
+    paddingHorizontal: 10,
     paddingVertical: 3,
   },
-  statusPaid: { backgroundColor: "#14532d" },
-  statusText: { fontSize: 11, fontWeight: "700", color: "#94a3b8" },
-  orderDate: { fontSize: 12, color: "#64748b" },
-  orderItem: { fontSize: 13, color: "#94a3b8" },
-  orderTotal: { fontSize: 14, fontWeight: "700", color: "#f59e0b", marginTop: 4 },
+  statusText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3, textTransform: "uppercase" },
+  orderItems: { fontSize: 14, fontWeight: "600", lineHeight: 19 },
+  orderMeta: { fontSize: 11, fontWeight: "500" },
+  orderRef: { fontSize: 11, fontFamily: "Menlo" },
+  orderTotal: { fontSize: 15, fontWeight: "800" },
   changeSchoolBtn: {
     flexDirection: "row",
     alignItems: "center",

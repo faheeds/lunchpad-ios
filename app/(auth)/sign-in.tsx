@@ -16,6 +16,7 @@ import * as AppleAuthentication from "expo-apple-authentication";
 import { useRouter } from "expo-router";
 import { appleSignIn } from "../../lib/auth";
 import { useTheme } from "../../lib/theme";
+import { BrandMark } from "../../components/BrandMark";
 
 export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
@@ -48,25 +49,15 @@ export default function SignInScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <View style={styles.inner}>
-        {/* Header — restaurant logo + branded welcome */}
+        {/* Header — branded welcome with restaurant or LunchPad mark. */}
         <View style={styles.header}>
-          {theme.logoUrl ? (
-            <Image
-              source={{ uri: theme.logoUrl }}
-              style={[styles.iconCircle, { backgroundColor: theme.primary }]}
-              resizeMode="cover"
-            />
-          ) : (
-            <View
-              style={[
-                styles.iconCircle,
-                { backgroundColor: `${theme.primary}22` },
-              ]}
-            >
-              <Text style={styles.icon}>🍽️</Text>
-            </View>
-          )}
-          <Text style={[styles.title, { color: theme.textPrimary }]}>
+          <BrandMark size={80} radius={40} />
+          <Text
+            style={[
+              styles.title,
+              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+            ]}
+          >
             {restaurantName ? `Welcome to ${restaurantName}` : "Welcome to LunchPad"}
           </Text>
           <Text style={[styles.subtitle, { color: theme.textSecondary }]}>

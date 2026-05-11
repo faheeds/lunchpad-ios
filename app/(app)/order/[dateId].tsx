@@ -18,9 +18,11 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { fetchDeliveryDates } from "../../../lib/api";
 import { useCart, formatPrice } from "../../../lib/store";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
+import { useTheme } from "../../../lib/theme";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -41,6 +43,7 @@ function ItemModal({
   deliveryDate: DeliveryDateWithMenu;
   onClose: () => void;
 }) {
+  const theme = useTheme();
   const addItem = useCart((s) => s.addItem);
   const cartItems = useCart((s) => s.items);
   const inCart = cartItems.some((i) => i.menuItemId === item.id);
@@ -69,6 +72,9 @@ function ItemModal({
   }
 
   function handleAddToCart() {
+    // Haptic confirmation — feels native and is invaluable when stacking
+    // multiple items quickly.
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     addItem(
       {
         menuItemId: item.id,
@@ -86,12 +92,17 @@ function ItemModal({
 
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={modalStyles.container}>
+      <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
         {/* Handle + close */}
         <View style={modalStyles.handleRow}>
           <View style={modalStyles.handle} />
-          <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>
-            <Ionicons name="close" size={20} color="#94a3b8" />
+          <TouchableOpacity
+            onPress={onClose}
+            style={modalStyles.closeBtn}
+            accessibilityLabel="Close item details"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={20} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -171,8 +182,11 @@ function ItemModal({
 
         {/* Add to cart */}
         <SafeAreaView style={modalStyles.footer}>
-          <TouchableOpacity style={modalStyles.addButton} onPress={handleAddToCart}>
-            <Text style={modalStyles.addButtonText}>
+          <TouchableOpacity
+            style={[modalStyles.addButton, { backgroundColor: theme.primary }]}
+            onPress={handleAddToCart}
+          >
+            <Text style={[modalStyles.addButtonText, { color: theme.textOnPrimary }]}>
               {inCart ? "Update cart" : "Add to cart"} — {formatPrice(totalCents)}
             </Text>
           </TouchableOpacity>
@@ -195,40 +209,54 @@ function MenuItemCard({
   inCart: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
     <TouchableOpacity
-      style={[styles.menuCard, soldOut && styles.menuCardSoldOut]}
+      style={[
+        styles.menuCard,
+        { backgroundColor: theme.surface },
+        soldOut && styles.menuCardSoldOut,
+      ]}
       onPress={onPress}
       disabled={soldOut}
       activeOpacity={0.8}
+      accessibilityLabel={`${item.name}, ${formatPrice(item.basePriceCents)}${
+        soldOut ? ", sold out" : inCart ? ", in cart" : ""
+      }`}
+      accessibilityRole="button"
     >
       {item.imageUrl ? (
         <Image source={{ uri: item.imageUrl }} style={styles.menuImage} />
       ) : (
-        <View style={styles.menuImagePlaceholder}>
+        <View style={[styles.menuImagePlaceholder, { backgroundColor: theme.dark }]}>
           <Text style={{ fontSize: 28 }}>🍽️</Text>
         </View>
       )}
       <View style={styles.menuInfo}>
-        <Text style={styles.menuName}>{item.name}</Text>
+        <Text style={[styles.menuName, { color: theme.textPrimary }]}>{item.name}</Text>
         {item.description && (
-          <Text style={styles.menuDesc} numberOfLines={2}>
+          <Text
+            style={[styles.menuDesc, { color: theme.textSecondary }]}
+            numberOfLines={2}
+          >
             {item.description}
           </Text>
         )}
-        <Text style={styles.menuPrice}>{formatPrice(item.basePriceCents)}</Text>
+        <Text style={[styles.menuPrice, { color: theme.primary }]}>
+          {formatPrice(item.basePriceCents)}
+        </Text>
       </View>
       {soldOut ? (
-        <View style={styles.soldOutBadge}>
-          <Text style={styles.soldOutText}>Sold out</Text>
+        <View style={[styles.soldOutBadge, { backgroundColor: theme.surfaceElevated }]}>
+          <Text style={[styles.soldOutText, { color: theme.textSecondary }]}>Sold out</Text>
         </View>
       ) : inCart ? (
         <View style={styles.inCartBadge}>
-          <Ionicons name="checkmark-circle" size={24} color="#f59e0b" />
+          <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
         </View>
       ) : (
         <View style={styles.addIcon}>
-          <Ionicons name="add-circle-outline" size={24} color="#475569" />
+          <Ionicons name="add-circle-outline" size={24} color={theme.textMuted} />
         </View>
       )}
     </TouchableOpacity>
@@ -240,6 +268,7 @@ function MenuItemCard({
 export default function OrderScreen() {
   const { dateId } = useLocalSearchParams<{ dateId: string }>();
   const router = useRouter();
+  const theme = useTheme();
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const cartItems = useCart((s) => s.items);
   const cartCount = useCart((s) => s.count());
@@ -254,8 +283,8 @@ export default function OrderScreen() {
 
   if (isLoading || !deliveryDate) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.loadingText}>Loading menu…</Text>
+      <View style={[styles.center, { backgroundColor: theme.dark }]}>
+        <Text style={[styles.loadingText, { color: theme.textMuted }]}>Loading menu…</Text>
       </View>
     );
   }
@@ -263,18 +292,30 @@ export default function OrderScreen() {
   const soldOutSet = new Set(deliveryDate.soldOut);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
       {/* Header */}
       <SafeAreaView>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={24} color="#f1f5f9" />
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            accessibilityLabel="Back to delivery dates"
+            accessibilityRole="button"
+          >
+            <Ionicons name="chevron-back" size={24} color={theme.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text style={styles.headerDate}>
+            <Text
+              style={[
+                styles.headerDate,
+                { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+              ]}
+            >
               {formatDateLong(deliveryDate.deliveryDate)}
             </Text>
-            <Text style={styles.headerSchool}>{deliveryDate.school.name}</Text>
+            <Text style={[styles.headerSchool, { color: theme.textMuted }]}>
+              {deliveryDate.school.name}
+            </Text>
           </View>
         </View>
       </SafeAreaView>
@@ -298,14 +339,21 @@ export default function OrderScreen() {
       {cartCount > 0 && (
         <SafeAreaView style={styles.cartBarWrapper}>
           <TouchableOpacity
-            style={styles.cartBar}
-            onPress={() => router.push("/(app)/cart")}
+            style={[styles.cartBar, { backgroundColor: theme.primary }]}
+            onPress={() => {
+              Haptics.selectionAsync().catch(() => {});
+              router.push("/(app)/cart");
+            }}
+            accessibilityLabel={`View cart with ${cartCount} items, ${formatPrice(cartTotal)}`}
+            accessibilityRole="button"
           >
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{cartCount}</Text>
+            <View style={[styles.cartBadge, { backgroundColor: theme.dark }]}>
+              <Text style={[styles.cartBadgeText, { color: theme.primary }]}>
+                {cartCount}
+              </Text>
             </View>
-            <Text style={styles.cartBarText}>View cart</Text>
-            <Text style={styles.cartBarPrice}>
+            <Text style={[styles.cartBarText, { color: theme.textOnPrimary }]}>View cart</Text>
+            <Text style={[styles.cartBarPrice, { color: theme.textOnPrimary }]}>
               {formatPrice(cartTotal)}
             </Text>
           </TouchableOpacity>

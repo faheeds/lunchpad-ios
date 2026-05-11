@@ -16,14 +16,17 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
 import { fetchAccount, createOrder, getJWT } from "../../lib/api";
 import type { Child } from "../../lib/types";
+import { useTheme } from "../../lib/theme";
 
 export default function CartScreen() {
   const router = useRouter();
+  const theme = useTheme();
   const items = useCart((s) => s.items);
   const deliveryDateId = useCart((s) => s.deliveryDateId);
   const schoolId = useCart((s) => s.schoolId);
@@ -71,6 +74,9 @@ export default function CartScreen() {
     }
 
     setSubmitting(true);
+    // Heavier haptic for the "money moving" CTA — affirmation that
+    // we're proceeding to payment.
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
       const { checkoutUrl } = await createOrder({
         deliveryDateId,
@@ -126,10 +132,10 @@ export default function CartScreen() {
 
   if (items.length === 0) {
     return (
-      <View style={styles.empty}>
+      <View style={[styles.empty, { backgroundColor: theme.dark }]}>
         <Text style={styles.emptyIcon}>🛒</Text>
-        <Text style={styles.emptyTitle}>Your cart is empty</Text>
-        <Text style={styles.emptySub}>
+        <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Your cart is empty</Text>
+        <Text style={[styles.emptySub, { color: theme.textMuted }]}>
           Go to Order to browse the menu and add items.
         </Text>
       </View>
@@ -137,11 +143,17 @@ export default function CartScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <SafeAreaView>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Your Cart</Text>
-          <Text style={styles.headerSub}>{items.length} item{items.length !== 1 ? "s" : ""}</Text>
+          <Text
+            style={[styles.headerTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+          >
+            Your cart
+          </Text>
+          <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+            {items.length} item{items.length !== 1 ? "s" : ""}
+          </Text>
         </View>
       </SafeAreaView>
 
@@ -168,10 +180,15 @@ export default function CartScreen() {
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => removeItem(item.menuItemId)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  removeItem(item.menuItemId);
+                }}
                 style={styles.removeBtn}
+                accessibilityLabel={`Remove ${item.itemName} from cart`}
+                accessibilityRole="button"
               >
-                <Ionicons name="trash-outline" size={18} color="#475569" />
+                <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
           ))}
@@ -287,14 +304,20 @@ export default function CartScreen() {
       {/* Checkout button */}
       <SafeAreaView style={styles.footer}>
         <TouchableOpacity
-          style={[styles.checkoutBtn, submitting && styles.checkoutBtnDisabled]}
+          style={[
+            styles.checkoutBtn,
+            { backgroundColor: theme.primary },
+            submitting && styles.checkoutBtnDisabled,
+          ]}
           onPress={handleCheckout}
           disabled={submitting}
+          accessibilityLabel={`Checkout, total ${formatPrice(total)}`}
+          accessibilityRole="button"
         >
           {submitting ? (
-            <ActivityIndicator color="#0f172a" />
+            <ActivityIndicator color={theme.textOnPrimary} />
           ) : (
-            <Text style={styles.checkoutBtnText}>
+            <Text style={[styles.checkoutBtnText, { color: theme.textOnPrimary }]}>
               Checkout — {formatPrice(total)}
             </Text>
           )}

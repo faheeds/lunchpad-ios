@@ -72,6 +72,13 @@ export type Theme = {
   border: string;        // 1px lines between rows
   divider: string;       // section dividers
 
+  // Typography family. Bundled iOS system fonts only (no remote font
+  // loading at this stage). Display is reserved for headlines and the
+  // brand wordmark; body is used everywhere else and falls back to the
+  // system default.
+  fontDisplay: string;   // e.g. "Avenir Next" — used for page titles, brand
+  fontBody: string;      // e.g. "System" — paragraphs, labels
+
   // Logos / heroes (URLs may be null even after resolution if tenant didn't upload one)
   logoUrl: string | null;
   heroImageUrl: string | null;
@@ -92,7 +99,7 @@ const NEUTRAL_THEME: Theme = {
 
   textPrimary: "#f1f5f9",        // slate-100
   textSecondary: "#94a3b8",      // slate-400 (passes AA on dark)
-  textMuted: "#64748b",          // slate-500 (passes AA marginally)
+  textMuted: "#94a3b8",          // bumped one tier brighter for AA compliance
   textOnPrimary: "#0f172a",      // dark text on amber CTA
 
   danger: "#f87171",             // red-400
@@ -101,6 +108,12 @@ const NEUTRAL_THEME: Theme = {
 
   border: "#1e293b",
   divider: "#334155",
+
+  // iOS-native fonts. Avenir Next is shipped with iOS and reads as more
+  // editorial than System SF, which gives headlines a "deliberate" feel
+  // without bundling a custom .ttf. Falls back gracefully on any device.
+  fontDisplay: "Avenir Next",
+  fontBody: "System",
 
   logoUrl: null,
   heroImageUrl: null,
@@ -144,6 +157,13 @@ export function buildTheme(brand: RestaurantBrand | null): Theme {
 
     border: NEUTRAL_THEME.border,
     divider: NEUTRAL_THEME.divider,
+
+    // Typography stays on iOS-native fonts unless we later bundle the
+    // restaurant's custom face. Tenant-set displayFont strings (e.g.
+    // "Oswald") are passed through so a future build can opt into the
+    // restaurant's web font by bundling the matching .ttf.
+    fontDisplay: NEUTRAL_THEME.fontDisplay,
+    fontBody: NEUTRAL_THEME.fontBody,
 
     logoUrl: brand.logoUrl,
     heroImageUrl: brand.heroImageUrl,
