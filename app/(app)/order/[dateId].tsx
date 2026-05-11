@@ -48,6 +48,15 @@ function ItemModal({
   const cartItems = useCart((s) => s.items);
   const inCart = cartItems.some((i) => i.menuItemId === item.id);
 
+  // Required-choice picker state. When `item.requiredChoices` is non-empty,
+  // the customer MUST pick one before "Add to cart" enables. The backend
+  // validates this against MenuItem.requiredChoices and rejects checkout
+  // if missing, so blocking client-side is purely UX — the underlying
+  // safety is server-enforced.
+  const requiredChoices = item.requiredChoices ?? [];
+  const hasRequiredChoice = requiredChoices.length > 0;
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
+
   const [selectedAdditions, setSelectedAdditions] = useState<string[]>([]);
   const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
 
@@ -58,6 +67,10 @@ function ItemModal({
     .filter((o) => selectedAdditions.includes(o.name))
     .reduce((s, o) => s + o.priceDeltaCents, 0);
   const totalCents = item.basePriceCents + extraCents;
+
+  // Gate "Add to cart": when the item has required choices, the customer
+  // must pick one. Otherwise always enabled.
+  const canAddToCart = !hasRequiredChoice || selectedChoice !== null;
 
   function toggleAddition(name: string) {
     setSelectedAdditions((prev) =>
@@ -71,7 +84,24 @@ function ItemModal({
     );
   }
 
+  function pickChoice(name: string) {
+    // Toggle off if re-tapped so the customer can clear their selection
+    // and re-evaluate — feels less sticky than radio buttons.
+    setSelectedChoice((prev) => (prev === name ? null : name));
+    // Light tap so a quick scroll-through-and-pick feels responsive
+    // without being too loud.
+    Haptics.selectionAsync().catch(() => {});
+  }
+
   function handleAddToCart() {
+    if (!canAddToCart) {
+      // Belt-and-braces — the disabled state on the button already
+      // prevents this, but if a future change wires onPress without
+      // disabled checks we still get a useful nudge instead of a silent
+      // failure at checkout.
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
     // Haptic confirmation — feels native and is invaluable when stacking
     // multiple items quickly. The store bumps quantity if this exact
     // configuration is already in the cart, otherwise adds a new line.
@@ -81,6 +111,7 @@ function ItemModal({
         menuItemId: item.id,
         itemName: item.name,
         basePriceCents: item.basePriceCents,
+        choice: selectedChoice ?? undefined,
         additions: selectedAdditions,
         removals: selectedRemovals,
         lineTotalCents: totalCents,
@@ -125,6 +156,51 @@ function ItemModal({
 
           {item.description && (
             <Text style={modalStyles.description}>{item.description}</Text>
+          )}
+
+          {/* Required choice picker — rendered first so it visually
+              gates the add-on section beneath. Each choice is a tappable
+              chip; tapping the selected one again clears it. The "Add
+              to cart" button stays disabled below until exactly one is
+              picked. */}
+          {hasRequiredChoice && (
+            <View style={modalStyles.section}>
+              <View style={modalStyles.sectionTitleRow}>
+                <Text style={modalStyles.sectionTitle}>
+                  Pick one <Text style={modalStyles.requiredMark}>· required</Text>
+                </Text>
+              </View>
+              <View style={modalStyles.choiceGrid}>
+                {requiredChoices.map((name) => {
+                  const isSelected = selectedChoice === name;
+                  return (
+                    <TouchableOpacity
+                      key={name}
+                      onPress={() => pickChoice(name)}
+                      style={[
+                        modalStyles.choiceChip,
+                        {
+                          backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
+                          borderColor: isSelected ? theme.primary : theme.border,
+                        },
+                      ]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: isSelected }}
+                      accessibilityLabel={`${name}${isSelected ? ", selected" : ""}`}
+                    >
+                      <Text
+                        style={[
+                          modalStyles.choiceChipText,
+                          { color: isSelected ? theme.textOnPrimary : theme.textPrimary },
+                        ]}
+                      >
+                        {name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
           )}
 
           {/* Additions */}
@@ -181,14 +257,36 @@ function ItemModal({
           )}
         </ScrollView>
 
-        {/* Add to cart */}
+        {/* Add to cart — disabled until any required choice is picked.
+            We keep the button visually present (so the user sees the
+            price) but dim it and add an inline hint when it's gated.
+            Tapping while disabled does nothing — the chip picker above
+            is the call-to-action in that state. */}
         <SafeAreaView style={modalStyles.footer}>
           <TouchableOpacity
-            style={[modalStyles.addButton, { backgroundColor: theme.primary }]}
+            style={[
+              modalStyles.addButton,
+              {
+                backgroundColor: canAddToCart ? theme.primary : theme.surfaceElevated,
+                opacity: canAddToCart ? 1 : 0.7,
+              },
+            ]}
             onPress={handleAddToCart}
+            disabled={!canAddToCart}
+            accessibilityState={{ disabled: !canAddToCart }}
+            accessibilityHint={
+              !canAddToCart ? "Pick a required option above to enable" : undefined
+            }
           >
-            <Text style={[modalStyles.addButtonText, { color: theme.textOnPrimary }]}>
-              {inCart ? "Add another" : "Add to cart"} — {formatPrice(totalCents)}
+            <Text
+              style={[
+                modalStyles.addButtonText,
+                { color: canAddToCart ? theme.textOnPrimary : theme.textMuted },
+              ]}
+            >
+              {!canAddToCart
+                ? "Pick a required option above"
+                : `${inCart ? "Add another" : "Add to cart"} — ${formatPrice(totalCents)}`}
             </Text>
           </TouchableOpacity>
         </SafeAreaView>
@@ -500,6 +598,34 @@ const modalStyles = StyleSheet.create({
     color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  requiredMark: {
+    color: "#f59e0b",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "none",
+    letterSpacing: 0,
+  },
+  choiceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  choiceChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1.5,
+  },
+  choiceChipText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
   optionRow: {
     flexDirection: "row",

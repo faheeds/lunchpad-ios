@@ -22,6 +22,12 @@ export type MenuItem = {
   /** Optional — present on the Menu tab response, may be absent on the
    *  delivery-dates response. Empty array for items without tags. */
   dietaryTags?: string[];
+  /** Pick-one selections the customer MUST resolve before adding the
+   *  item to their cart (e.g. Beef / Crispy Chicken / Vegan for a
+   *  Build-Your-Own-Burger). When non-empty, the order modal renders a
+   *  required-choice picker and the "Add to cart" button stays disabled
+   *  until one is chosen. Empty / undefined = no required choice. */
+  requiredChoices?: string[];
 };
 
 /** Menu tab response — grouped by category. */
@@ -47,14 +53,19 @@ export type DeliveryDateWithMenu = {
 };
 
 export type CartItem = {
-  /** Stable id for this cart line — derived from menuItemId + customizations
-   *  so two distinct configurations of the same item are separate lines,
-   *  but an exact re-add of the same combo bumps `quantity` on the
-   *  existing line instead of duplicating. */
+  /** Stable id for this cart line — derived from menuItemId + choice +
+   *  customizations so two distinct configurations of the same item are
+   *  separate lines, but an exact re-add of the same combo bumps
+   *  `quantity` on the existing line instead of duplicating. */
   cartKey: string;
   menuItemId: string;
   itemName: string;
   basePriceCents: number;
+  /** Operator-defined pick-one selection (e.g. "Beef" or "Chicken"). Only
+   *  present when the menu item has `requiredChoices`. The backend
+   *  validates this against the item's `requiredChoices` list and
+   *  rejects checkout if missing. */
+  choice?: string;
   additions: string[];
   removals: string[];
   allergyNotes?: string;
@@ -67,15 +78,17 @@ export type CartItem = {
 
 /** Build a deterministic key from a cart-item configuration. Same options
  *  in a different order still hash to the same key so we don't end up
- *  with sibling lines that should be one. */
+ *  with sibling lines that should be one. Includes `choice` so a Beef
+ *  burger and a Vegan burger are separate cart lines. */
 export function buildCartKey(
   menuItemId: string,
+  choice: string | undefined,
   additions: string[],
   removals: string[],
 ): string {
   const a = [...additions].sort().join("|");
   const r = [...removals].sort().join("|");
-  return `${menuItemId}::${a}::${r}`;
+  return `${menuItemId}::${choice ?? ""}::${a}::${r}`;
 }
 
 export type Child = {

@@ -204,5 +204,9 @@ export const createOrder = (data: {
   parentName: string;
   parentEmail: string;
   allergyNotes?: string;
-  items: { menuItemId: string; additions?: string[]; removals?: string[] }[];
+  /** Each item is one unit. The iOS cart store expands `quantity` into
+   *  N entries before calling this so the server sees one row per unit.
+   *  `choice` carries the operator-defined required pick-one when the
+   *  menu item has `requiredChoices`. */
+  items: { menuItemId: string; choice?: string; additions?: string[]; removals?: string[] }[];
 }) => apiPost<{ checkoutUrl: string; orderId: string }>("/api/mobile/native/order", data);

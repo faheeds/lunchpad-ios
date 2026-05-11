@@ -93,9 +93,14 @@ export default function CartScreen() {
         // so qty=3 of a burger becomes 3 cart entries (and 3 OrderItem
         // rows). Keeps the API/DB unchanged while letting the UI
         // collapse identical configurations behind a single qty stepper.
+        // `choice` is the required pick-one value (e.g. "Beef") from
+        // the item modal — only present when the menu item declared
+        // `requiredChoices`. The server validates this against the
+        // item's `requiredChoices` list and rejects checkout if missing.
         items: items.flatMap((i) =>
           Array.from({ length: i.quantity }, () => ({
             menuItemId: i.menuItemId,
+            choice: i.choice,
             additions: i.additions,
             removals: i.removals,
           })),
@@ -176,6 +181,11 @@ export default function CartScreen() {
               <View key={item.cartKey} style={styles.cartItem}>
                 <View style={styles.cartItemInfo}>
                   <Text style={styles.cartItemName}>{item.itemName}</Text>
+                  {item.choice && (
+                    <Text style={styles.cartItemChoice}>
+                      {item.choice}
+                    </Text>
+                  )}
                   {item.additions.length > 0 && (
                     <Text style={styles.cartItemMods}>
                       + {item.additions.join(", ")}
@@ -436,6 +446,13 @@ const styles = StyleSheet.create({
   cartItemInfo: { flex: 1, gap: 3 },
   cartItemName: { fontSize: 15, fontWeight: "600", color: "#f1f5f9" },
   cartItemMods: { fontSize: 12, color: "#64748b" },
+  cartItemChoice: {
+    // Slightly brighter than additions/removals so the required pick-one
+    // reads as a primary attribute of the line (not just a modification).
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#94a3b8",
+  },
   cartItemPrice: { fontSize: 14, fontWeight: "600", color: "#f59e0b", marginTop: 2 },
   cartItemPriceUnit: { fontSize: 11, fontWeight: "500", color: "#64748b" },
   removeBtn: { padding: 4 },
