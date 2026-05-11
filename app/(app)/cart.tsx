@@ -31,8 +31,11 @@ export default function CartScreen() {
   const deliveryDateId = useCart((s) => s.deliveryDateId);
   const schoolId = useCart((s) => s.schoolId);
   const removeItem = useCart((s) => s.removeItem);
+  const incrementItem = useCart((s) => s.incrementItem);
+  const decrementItem = useCart((s) => s.decrementItem);
   const clearCart = useCart((s) => s.clearCart);
   const total = useCart((s) => s.total());
+  const unitCount = useCart((s) => s.count());
 
   const { data: account } = useQuery({
     queryKey: ["account"],
@@ -86,11 +89,17 @@ export default function CartScreen() {
         parentName: effParentName,
         parentEmail: effParentEmail,
         allergyNotes: effectiveAllergyNotes,
-        items: items.map((i) => ({
-          menuItemId: i.menuItemId,
-          additions: i.additions,
-          removals: i.removals,
-        })),
+        // Expand quantities → the server treats each entry as one unit,
+        // so qty=3 of a burger becomes 3 cart entries (and 3 OrderItem
+        // rows). Keeps the API/DB unchanged while letting the UI
+        // collapse identical configurations behind a single qty stepper.
+        items: items.flatMap((i) =>
+          Array.from({ length: i.quantity }, () => ({
+            menuItemId: i.menuItemId,
+            additions: i.additions,
+            removals: i.removals,
+          })),
+        ),
       });
 
       clearCart();
@@ -152,7 +161,7 @@ export default function CartScreen() {
             Your cart
           </Text>
           <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-            {items.length} item{items.length !== 1 ? "s" : ""}
+            {unitCount} item{unitCount !== 1 ? "s" : ""}
           </Text>
         </View>
       </SafeAreaView>
@@ -161,37 +170,73 @@ export default function CartScreen() {
         {/* Cart items */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Items</Text>
-          {items.map((item) => (
-            <View key={item.menuItemId} style={styles.cartItem}>
-              <View style={styles.cartItemInfo}>
-                <Text style={styles.cartItemName}>{item.itemName}</Text>
-                {item.additions.length > 0 && (
-                  <Text style={styles.cartItemMods}>
-                    + {item.additions.join(", ")}
+          {items.map((item) => {
+            const lineTotal = item.lineTotalCents * item.quantity;
+            return (
+              <View key={item.cartKey} style={styles.cartItem}>
+                <View style={styles.cartItemInfo}>
+                  <Text style={styles.cartItemName}>{item.itemName}</Text>
+                  {item.additions.length > 0 && (
+                    <Text style={styles.cartItemMods}>
+                      + {item.additions.join(", ")}
+                    </Text>
+                  )}
+                  {item.removals.length > 0 && (
+                    <Text style={styles.cartItemMods}>
+                      − {item.removals.join(", ")}
+                    </Text>
+                  )}
+                  <Text style={styles.cartItemPrice}>
+                    {formatPrice(lineTotal)}
+                    {item.quantity > 1 ? (
+                      <Text style={styles.cartItemPriceUnit}>
+                        {"  "}({formatPrice(item.lineTotalCents)} each)
+                      </Text>
+                    ) : null}
                   </Text>
-                )}
-                {item.removals.length > 0 && (
-                  <Text style={styles.cartItemMods}>
-                    − {item.removals.join(", ")}
+                </View>
+
+                {/* Quantity stepper */}
+                <View style={[styles.qtyControl, { backgroundColor: theme.dark }]}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      decrementItem(item.cartKey);
+                    }}
+                    style={styles.qtyBtn}
+                    accessibilityLabel={
+                      item.quantity > 1
+                        ? `Decrease ${item.itemName} quantity`
+                        : `Remove ${item.itemName} from cart`
+                    }
+                    accessibilityRole="button"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons
+                      name={item.quantity > 1 ? "remove" : "trash-outline"}
+                      size={18}
+                      color={theme.textPrimary}
+                    />
+                  </TouchableOpacity>
+                  <Text style={[styles.qtyValue, { color: theme.textPrimary }]}>
+                    {item.quantity}
                   </Text>
-                )}
-                <Text style={styles.cartItemPrice}>
-                  {formatPrice(item.lineTotalCents)}
-                </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                      incrementItem(item.cartKey);
+                    }}
+                    style={styles.qtyBtn}
+                    accessibilityLabel={`Increase ${item.itemName} quantity`}
+                    accessibilityRole="button"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="add" size={18} color={theme.textPrimary} />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <TouchableOpacity
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                  removeItem(item.menuItemId);
-                }}
-                style={styles.removeBtn}
-                accessibilityLabel={`Remove ${item.itemName} from cart`}
-                accessibilityRole="button"
-              >
-                <Ionicons name="trash-outline" size={18} color={theme.textMuted} />
-              </TouchableOpacity>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         {/* Student info */}
@@ -392,7 +437,29 @@ const styles = StyleSheet.create({
   cartItemName: { fontSize: 15, fontWeight: "600", color: "#f1f5f9" },
   cartItemMods: { fontSize: 12, color: "#64748b" },
   cartItemPrice: { fontSize: 14, fontWeight: "600", color: "#f59e0b", marginTop: 2 },
+  cartItemPriceUnit: { fontSize: 11, fontWeight: "500", color: "#64748b" },
   removeBtn: { padding: 4 },
+  qtyControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qtyValue: {
+    minWidth: 22,
+    textAlign: "center",
+    fontSize: 15,
+    fontWeight: "700",
+  },
   childPicker: { gap: 8 },
   childRow: { flexDirection: "row" },
   childChip: {

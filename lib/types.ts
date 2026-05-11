@@ -47,14 +47,36 @@ export type DeliveryDateWithMenu = {
 };
 
 export type CartItem = {
+  /** Stable id for this cart line — derived from menuItemId + customizations
+   *  so two distinct configurations of the same item are separate lines,
+   *  but an exact re-add of the same combo bumps `quantity` on the
+   *  existing line instead of duplicating. */
+  cartKey: string;
   menuItemId: string;
   itemName: string;
   basePriceCents: number;
   additions: string[];
   removals: string[];
   allergyNotes?: string;
+  /** Per-unit total (base + additions). Multiply by `quantity` for the
+   *  line total shown in the cart. */
   lineTotalCents: number;
+  /** Number of identical units of this configuration. Always ≥ 1. */
+  quantity: number;
 };
+
+/** Build a deterministic key from a cart-item configuration. Same options
+ *  in a different order still hash to the same key so we don't end up
+ *  with sibling lines that should be one. */
+export function buildCartKey(
+  menuItemId: string,
+  additions: string[],
+  removals: string[],
+): string {
+  const a = [...additions].sort().join("|");
+  const r = [...removals].sort().join("|");
+  return `${menuItemId}::${a}::${r}`;
+}
 
 export type Child = {
   id: string;

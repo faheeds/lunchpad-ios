@@ -73,7 +73,8 @@ function ItemModal({
 
   function handleAddToCart() {
     // Haptic confirmation — feels native and is invaluable when stacking
-    // multiple items quickly.
+    // multiple items quickly. The store bumps quantity if this exact
+    // configuration is already in the cart, otherwise adds a new line.
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     addItem(
       {
@@ -187,7 +188,7 @@ function ItemModal({
             onPress={handleAddToCart}
           >
             <Text style={[modalStyles.addButtonText, { color: theme.textOnPrimary }]}>
-              {inCart ? "Update cart" : "Add to cart"} — {formatPrice(totalCents)}
+              {inCart ? "Add another" : "Add to cart"} — {formatPrice(totalCents)}
             </Text>
           </TouchableOpacity>
         </SafeAreaView>
