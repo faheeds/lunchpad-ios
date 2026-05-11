@@ -2,13 +2,13 @@
 
 ## What This Is
 A native Expo React Native app (SDK 54) that is the iOS companion to the LunchPad web app.
-Parents use it to browse menus, sign in with Apple, and place school lunch orders.
+Customers use it to browse menus, sign in with Apple, and place school or office lunch orders.
 
 ## Repos
 - **This repo (iOS app):** `https://github.com/faheeds/lunchpad-ios`
 - **Web app (Next.js):** `https://github.com/faheeds/lunchpad` — do NOT break existing web routes
 - **Production:** `https://lunchpad.us` (apex marketing site) and `https://<slug>.lunchpad.us` (per-tenant ordering site)
-- **Vercel project URL (legacy):** `https://lunchpad-five.vercel.app` — still resolves but the canonical surface is lunchpad.us
+- The earlier `lunchpad-five.vercel.app` URL is deprecated — all new test tenants live on `*.lunchpad.us`.
 
 ## Tech Stack
 - Expo SDK 54, Expo Router (file-based), React Native 0.81.5
@@ -37,7 +37,7 @@ lib/
 ## Key Architecture Decisions
 
 ### School Code / Base URL
-Parents enter a school code or full URL (e.g. `lunchpad-five.vercel.app` or `lunch.localbiggerburger.com`).
+Customers enter a school code or full URL (e.g. `fsskitchen.lunchpad.us` or `lunch.localbiggerburger.com`).
 `validateSchoolCode()` in `lib/api.ts` hits `/api/mobile/native/info` on the resolved base URL.
 The resolved base URL is stored in SecureStore (`lunchpad_base_url`) so all subsequent API calls go to the right tenant.
 
