@@ -11,11 +11,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates } from "../../lib/api";
 import type { DeliveryDateWithMenu } from "../../lib/types";
+import { useTheme } from "../../lib/theme";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = [
@@ -48,36 +50,43 @@ function DeliveryDateCard({
   item: DeliveryDateWithMenu;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   const { day, month, date } = formatDate(item.deliveryDate);
   const cutoff = formatCutoff(item.cutoffAt);
   const itemCount = item.menuItems.length;
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity
+      style={[styles.card, { backgroundColor: theme.surface }]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
       {/* Date block */}
-      <View style={styles.dateBlock}>
-        <Text style={styles.dateDay}>{day}</Text>
-        <Text style={styles.dateNum}>{date}</Text>
-        <Text style={styles.dateMon}>{month}</Text>
+      <View style={[styles.dateBlock, { backgroundColor: theme.dark }]}>
+        <Text style={[styles.dateDay, { color: theme.primary }]}>{day}</Text>
+        <Text style={[styles.dateNum, { color: theme.textPrimary }]}>{date}</Text>
+        <Text style={[styles.dateMon, { color: theme.textMuted }]}>{month}</Text>
       </View>
 
       {/* Info */}
       <View style={styles.cardInfo}>
-        <Text style={styles.schoolName}>{item.school.name}</Text>
-        <Text style={styles.itemCount}>
+        <Text style={[styles.schoolName, { color: theme.textPrimary }]}>{item.school.name}</Text>
+        <Text style={[styles.itemCount, { color: theme.textSecondary }]}>
           {itemCount} item{itemCount !== 1 ? "s" : ""} available
         </Text>
-        <Text style={styles.cutoff}>{cutoff}</Text>
+        <Text style={[styles.cutoff, { color: theme.primary }]}>{cutoff}</Text>
       </View>
 
       {/* Arrow */}
-      <Text style={styles.arrow}>›</Text>
+      <Text style={[styles.arrow, { color: theme.surfaceElevated }]}>›</Text>
     </TouchableOpacity>
   );
 }
 
 export default function HomeScreen() {
   const router = useRouter();
+  const theme = useTheme();
+  const restaurantName = theme.restaurant?.name;
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["delivery-dates"],
     queryFn: fetchDeliveryDates,
@@ -85,18 +94,21 @@ export default function HomeScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color="#f59e0b" size="large" />
+      <View style={[styles.center, { backgroundColor: theme.dark }]}>
+        <ActivityIndicator color={theme.primary} size="large" />
       </View>
     );
   }
 
   if (isError) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Couldn't load dates.</Text>
-        <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
-          <Text style={styles.retryText}>Retry</Text>
+      <View style={[styles.center, { backgroundColor: theme.dark }]}>
+        <Text style={[styles.errorText, { color: theme.danger }]}>Couldn't load dates.</Text>
+        <TouchableOpacity
+          onPress={() => refetch()}
+          style={[styles.retryBtn, { backgroundColor: theme.surface }]}
+        >
+          <Text style={[styles.retryText, { color: theme.primary }]}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -105,10 +117,33 @@ export default function HomeScreen() {
   const dates = data ?? [];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Upcoming Lunches</Text>
-        <Text style={styles.headerSub}>
+        {/* Restaurant branding row — logo (if available) + name. Sits
+            above the section label so the restaurant gets top billing. */}
+        <View style={styles.brandRow}>
+          {theme.logoUrl && (
+            <Image
+              source={{ uri: theme.logoUrl }}
+              style={[styles.brandLogo, { backgroundColor: theme.primary }]}
+              resizeMode="cover"
+            />
+          )}
+          <Text
+            style={[
+              styles.brandName,
+              { color: theme.textPrimary },
+              !theme.logoUrl && styles.brandNameNoLogo,
+            ]}
+            numberOfLines={1}
+          >
+            {restaurantName ?? "LunchPad"}
+          </Text>
+        </View>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>
+          Upcoming lunches
+        </Text>
+        <Text style={[styles.headerSub, { color: theme.textMuted }]}>
           {dates.length} date{dates.length !== 1 ? "s" : ""} open for ordering
         </Text>
       </View>
@@ -116,8 +151,10 @@ export default function HomeScreen() {
       {dates.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyIcon}>📭</Text>
-          <Text style={styles.emptyTitle}>No dates open yet</Text>
-          <Text style={styles.emptySub}>
+          <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>
+            No dates open yet
+          </Text>
+          <Text style={[styles.emptySub, { color: theme.textMuted }]}>
             Check back soon — new delivery dates are added regularly.
           </Text>
         </View>
@@ -141,7 +178,7 @@ export default function HomeScreen() {
             <RefreshControl
               refreshing={isRefetching}
               onRefresh={refetch}
-              tintColor="#f59e0b"
+              tintColor={theme.primary}
             />
           }
         />
@@ -166,6 +203,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 16,
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  brandLogo: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+  },
+  brandName: {
+    fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  brandNameNoLogo: {
+    // No logo to anchor — bump weight slightly so the wordmark carries
+    // the brand presence on its own.
+    fontWeight: "800",
   },
   headerTitle: {
     fontSize: 28,

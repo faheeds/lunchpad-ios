@@ -17,12 +17,16 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { validateSchoolCode, setSchoolCode, setStoredBaseUrl, getJWT } from "../../lib/api";
+import { useRefreshTheme } from "../../lib/theme-context";
+import { useTheme } from "../../lib/theme";
 
 export default function SchoolCodeScreen() {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const refreshTheme = useRefreshTheme();
+  const theme = useTheme();
 
   async function handleContinue() {
     const trimmed = code.toLowerCase().trim();
@@ -32,14 +36,18 @@ export default function SchoolCodeScreen() {
     setError("");
 
     try {
-      const { valid, restaurantName, baseUrl } = await validateSchoolCode(trimmed);
+      const { valid, baseUrl } = await validateSchoolCode(trimmed);
       if (!valid) {
-        setError("Not found. Try your school's URL (e.g. lunch.yourdomain.com) or check with your school.");
+        setError("Not found. Try your full URL (e.g. lunch.yourdomain.com) or check with your school.");
         return;
       }
 
       await setSchoolCode(trimmed);
       if (baseUrl) await setStoredBaseUrl(baseUrl);
+
+      // Refresh the theme so the next screen renders in the new tenant's
+      // brand colors/logo immediately, not after an app restart.
+      await refreshTheme();
 
       // If already signed in, go straight to app
       const jwt = await getJWT();
@@ -55,34 +63,62 @@ export default function SchoolCodeScreen() {
     }
   }
 
+  // Theme is neutral on first visit (no tenant connected yet) but tracks
+  // the current tenant if the user comes back here via "Change school".
+  const hasLogo = Boolean(theme.logoUrl);
+
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.dark }]}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.inner}>
-        {/* Logo / wordmark */}
+        {/* Logo / wordmark — uploaded restaurant logo if available, else
+            the LunchPad mark (cloche-on-brand SVG). Falls back to amoji
+            only if neither is available, which shouldn't happen in
+            production. */}
         <View style={styles.logoContainer}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>🍽️</Text>
-          </View>
-          <Text style={styles.appName}>LunchPad</Text>
-          <Text style={styles.tagline}>School lunch, simplified.</Text>
+          {hasLogo ? (
+            <Image
+              source={{ uri: theme.logoUrl! }}
+              style={[styles.logoBox, { backgroundColor: theme.primary }]}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.logoBox, { backgroundColor: theme.primary }]}>
+              <Text style={[styles.logoText, { color: theme.textOnPrimary }]}>🍽️</Text>
+            </View>
+          )}
+          <Text style={[styles.appName, { color: theme.textPrimary }]}>
+            {theme.restaurant?.name ?? "LunchPad"}
+          </Text>
+          <Text style={[styles.tagline, { color: theme.textSecondary }]}>
+            {theme.restaurant ? "Lunch ordering, simplified." : "School lunch, simplified."}
+          </Text>
         </View>
 
         {/* Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Connect to your school</Text>
-          <Text style={styles.cardSubtitle}>
-            Enter the code your school gave you, or the full address (e.g. lunch.yourschool.com).
+        <View style={[styles.card, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.cardTitle, { color: theme.textPrimary }]}>
+            Connect to your lunch program
+          </Text>
+          <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>
+            Enter the code or the full address your school or office gave you (e.g. lunch.yourdomain.com).
           </Text>
 
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: theme.dark,
+                borderColor: theme.surfaceElevated,
+                color: theme.textPrimary,
+              },
+            ]}
             value={code}
             onChangeText={(t) => { setCode(t); setError(""); }}
             placeholder="e.g. lunch.yourschool.com"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={theme.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
@@ -91,18 +127,22 @@ export default function SchoolCodeScreen() {
             onSubmitEditing={handleContinue}
           />
 
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
+          {!!error && <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>}
 
           <TouchableOpacity
-            style={[styles.button, (!code.trim() || loading) && styles.buttonDisabled]}
+            style={[
+              styles.button,
+              { backgroundColor: theme.primary },
+              (!code.trim() || loading) && styles.buttonDisabled,
+            ]}
             onPress={handleContinue}
             disabled={!code.trim() || loading}
             activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color="#0f172a" />
+              <ActivityIndicator color={theme.textOnPrimary} />
             ) : (
-              <Text style={styles.buttonText}>Continue →</Text>
+              <Text style={[styles.buttonText, { color: theme.textOnPrimary }]}>Continue →</Text>
             )}
           </TouchableOpacity>
         </View>

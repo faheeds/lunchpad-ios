@@ -8,6 +8,7 @@ import {
   signInWithApple,
   SCHOOL_CODE_KEY,
 } from "./api";
+import { clearThemeCache } from "./theme-context";
 
 export async function isSignedIn(): Promise<boolean> {
   const token = await getJWT();
@@ -20,11 +21,15 @@ export async function isSignedIn(): Promise<boolean> {
  * each tenant has its own ParentUser record server-side — staying signed
  * in with a stale school code would just confuse them with another
  * tenant's data.
+ *
+ * Also wipes the cached brand so the next sign-in flow doesn't briefly
+ * flash the previous tenant's colors before the new theme loads.
  */
 export async function signOut(): Promise<void> {
   await clearJWT();
   await clearStoredBaseUrl();
   await SecureStore.deleteItemAsync(SCHOOL_CODE_KEY);
+  await clearThemeCache();
 }
 
 export async function appleSignIn(): Promise<void> {

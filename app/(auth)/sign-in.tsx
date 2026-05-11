@@ -10,15 +10,19 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { useRouter } from "expo-router";
 import { appleSignIn } from "../../lib/auth";
+import { useTheme } from "../../lib/theme";
 
 export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const theme = useTheme();
+  const restaurantName = theme.restaurant?.name;
 
   async function handleAppleSignIn() {
     setLoading(true);
@@ -42,23 +46,38 @@ export default function SignInScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <View style={styles.inner}>
-        {/* Header */}
+        {/* Header — restaurant logo + branded welcome */}
         <View style={styles.header}>
-          <View style={styles.iconCircle}>
-            <Text style={styles.icon}>🍽️</Text>
-          </View>
-          <Text style={styles.title}>Welcome to LunchPad</Text>
-          <Text style={styles.subtitle}>
-            Sign in to save your children's profiles and view order history.
+          {theme.logoUrl ? (
+            <Image
+              source={{ uri: theme.logoUrl }}
+              style={[styles.iconCircle, { backgroundColor: theme.primary }]}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[
+                styles.iconCircle,
+                { backgroundColor: `${theme.primary}22` },
+              ]}
+            >
+              <Text style={styles.icon}>🍽️</Text>
+            </View>
+          )}
+          <Text style={[styles.title, { color: theme.textPrimary }]}>
+            {restaurantName ? `Welcome to ${restaurantName}` : "Welcome to LunchPad"}
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+            Sign in to save your kids' profiles and see your order history.
           </Text>
         </View>
 
         {/* Sign in button */}
         <View style={styles.buttonsContainer}>
           {loading ? (
-            <ActivityIndicator color="#f59e0b" size="large" />
+            <ActivityIndicator color={theme.primary} size="large" />
           ) : (
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={
@@ -73,16 +92,18 @@ export default function SignInScreen() {
             />
           )}
 
-          {!!error && <Text style={styles.errorText}>{error}</Text>}
+          {!!error && <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>}
 
           {/* Guest option */}
           <TouchableOpacity onPress={handleGuest} style={styles.guestButton}>
-            <Text style={styles.guestText}>Continue as guest →</Text>
+            <Text style={[styles.guestText, { color: theme.textMuted }]}>
+              Continue as guest →
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* Privacy note */}
-        <Text style={styles.privacyNote}>
+        <Text style={[styles.privacyNote, { color: theme.textMuted }]}>
           Your information is only used to manage your lunch orders.
         </Text>
       </View>

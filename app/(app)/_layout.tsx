@@ -2,29 +2,32 @@ import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useCart } from "../../lib/store";
 import { View, Text, StyleSheet } from "react-native";
+import { useTheme } from "../../lib/theme";
 
 function CartBadge() {
   const count = useCart((s) => s.count());
+  const theme = useTheme();
   if (count === 0) return null;
   return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{count}</Text>
+    <View style={[styles.badge, { backgroundColor: theme.primary }]}>
+      <Text style={[styles.badgeText, { color: theme.textOnPrimary }]}>{count}</Text>
     </View>
   );
 }
 
 export default function AppLayout() {
+  const theme = useTheme();
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#0f172a",
-          borderTopColor: "#1e293b",
+          backgroundColor: theme.dark,
+          borderTopColor: theme.surface,
           borderTopWidth: 1,
         },
-        tabBarActiveTintColor: "#f59e0b",
-        tabBarInactiveTintColor: "#475569",
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
@@ -72,7 +75,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -4,
     right: -8,
-    backgroundColor: "#f59e0b",
     borderRadius: 8,
     minWidth: 16,
     height: 16,
@@ -83,6 +85,5 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 10,
     fontWeight: "800",
-    color: "#0f172a",
   },
 });
