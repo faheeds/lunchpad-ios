@@ -19,6 +19,20 @@ export type MenuItem = {
   imageUrl: string | null;
   basePriceCents: number;
   options: MenuOption[];
+  /** Optional — present on the Menu tab response, may be absent on the
+   *  delivery-dates response. Empty array for items without tags. */
+  dietaryTags?: string[];
+};
+
+/** Menu tab response — grouped by category. */
+export type MenuCategory = {
+  title: string;
+  items: MenuItem[];
+};
+
+export type RestaurantMenu = {
+  restaurantName: string;
+  categories: MenuCategory[];
 };
 
 export type DeliveryDateWithMenu = {

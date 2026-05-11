@@ -122,10 +122,24 @@ export async function validateSchoolCode(
 
 // ── Typed API calls ──────────────────────────────────────────────────────────
 
-import type { DeliveryDateWithMenu, Parent, OrderHistoryItem } from "./types";
+import type { DeliveryDateWithMenu, Parent, OrderHistoryItem, RestaurantMenu } from "./types";
 
 export const fetchDeliveryDates = () =>
   apiGet<DeliveryDateWithMenu[]>("/api/mobile/native/delivery-dates");
+
+/** Full restaurant menu, grouped by category. Public — used by Menu tab. */
+export async function fetchMenu(): Promise<RestaurantMenu> {
+  // Menu is public; bypass the JWT header so guests can browse too.
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}/api/mobile/native/menu`, {
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
 
 export const fetchAccount = () =>
   apiGet<Parent>("/api/mobile/native/account");

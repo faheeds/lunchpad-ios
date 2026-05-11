@@ -119,30 +119,60 @@ export default function HomeScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
-      <View style={styles.header}>
-        {/* Restaurant branding row — logo + name. Always shows the
-            BrandMark; falls back to LunchPad icon when no tenant logo. */}
-        <View style={styles.brandRow}>
-          <BrandMark size={28} radius={7} />
+      {/* Hero strip — restaurant's uploaded hero image with brand row
+          overlaid. Anchors the home screen in the restaurant's visual
+          identity instead of an empty header. */}
+      {theme.heroImageUrl ? (
+        <View style={styles.heroWrap}>
+          <Image source={{ uri: theme.heroImageUrl }} style={styles.heroImage} />
+          <View style={styles.heroOverlay} />
+          <View style={styles.heroContent}>
+            <View style={styles.brandRow}>
+              <BrandMark size={32} radius={8} />
+              <Text
+                style={[styles.brandName, { color: "#ffffff", fontFamily: theme.fontDisplay }]}
+                numberOfLines={1}
+              >
+                {restaurantName ?? "LunchPad"}
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.headerTitle,
+                { color: "#ffffff", fontFamily: theme.fontDisplay },
+              ]}
+            >
+              Upcoming lunches
+            </Text>
+            <Text style={[styles.headerSub, { color: "rgba(255,255,255,0.8)" }]}>
+              {dates.length} date{dates.length !== 1 ? "s" : ""} open for ordering
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.header}>
+          <View style={styles.brandRow}>
+            <BrandMark size={28} radius={7} />
+            <Text
+              style={[styles.brandName, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+              numberOfLines={1}
+            >
+              {restaurantName ?? "LunchPad"}
+            </Text>
+          </View>
           <Text
-            style={[styles.brandName, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
-            numberOfLines={1}
+            style={[
+              styles.headerTitle,
+              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+            ]}
           >
-            {restaurantName ?? "LunchPad"}
+            Upcoming lunches
+          </Text>
+          <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+            {dates.length} date{dates.length !== 1 ? "s" : ""} open for ordering
           </Text>
         </View>
-        <Text
-          style={[
-            styles.headerTitle,
-            { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-          ]}
-        >
-          Upcoming lunches
-        </Text>
-        <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-          {dates.length} date{dates.length !== 1 ? "s" : ""} open for ordering
-        </Text>
-      </View>
+      )}
 
       {dates.length === 0 ? (
         <View style={styles.empty}>
@@ -199,6 +229,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 16,
+  },
+  heroWrap: {
+    height: 220,
+    overflow: "hidden",
+    position: "relative",
+  },
+  heroImage: { ...StyleSheet.absoluteFillObject, width: "100%", height: "100%" },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  heroContent: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 20,
+    gap: 4,
   },
   brandRow: {
     flexDirection: "row",
