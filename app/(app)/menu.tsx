@@ -158,13 +158,22 @@ export default function MenuScreen() {
               <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
             ) : (
               <View style={[styles.itemImage, { backgroundColor: theme.dark }]}>
-                <Text style={{ fontSize: 32 }}>🍽️</Text>
+                <Text style={{ fontSize: 24 }}>🍽️</Text>
               </View>
             )}
             <View style={styles.itemInfo}>
-              <Text style={[styles.itemName, { color: theme.textPrimary }]}>
-                {item.name}
-              </Text>
+              {/* Name + price share row 1 — saves vertical space */}
+              <View style={styles.itemTitleRow}>
+                <Text
+                  style={[styles.itemName, { color: theme.textPrimary }]}
+                  numberOfLines={1}
+                >
+                  {item.name}
+                </Text>
+                <Text style={[styles.itemPrice, { color: theme.primary }]}>
+                  {formatPrice(item.basePriceCents)}
+                </Text>
+              </View>
               {item.description && (
                 <Text
                   style={[styles.itemDesc, { color: theme.textSecondary }]}
@@ -173,7 +182,6 @@ export default function MenuScreen() {
                   {item.description}
                 </Text>
               )}
-              {/* Dietary tags */}
               {item.dietaryTags && item.dietaryTags.length > 0 && (
                 <View style={styles.tagRow}>
                   {item.dietaryTags.slice(0, 3).map((tag) => (
@@ -191,9 +199,6 @@ export default function MenuScreen() {
                   ))}
                 </View>
               )}
-              <Text style={[styles.itemPrice, { color: theme.primary }]}>
-                {formatPrice(item.basePriceCents)}
-              </Text>
             </View>
           </TouchableOpacity>
         )}
@@ -380,24 +385,33 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
   sectionCount: { fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4 },
 
-  // Item card
+  // Item card — denser layout: smaller image, name & price on one row,
+  // description + tags below. Halves the card height vs. the earlier design.
   itemCard: {
     flexDirection: "row",
+    alignItems: "center",
     marginHorizontal: 16,
-    marginBottom: 10,
-    borderRadius: 14,
+    marginBottom: 8,
+    borderRadius: 12,
     overflow: "hidden",
   },
   itemImage: {
-    width: 96,
-    height: 96,
+    width: 64,
+    height: 64,
     alignItems: "center",
     justifyContent: "center",
   },
-  itemInfo: { flex: 1, padding: 12, gap: 4 },
-  itemName: { fontSize: 15, fontWeight: "700" },
+  itemInfo: { flex: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 3 },
+  itemTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  itemName: { fontSize: 15, fontWeight: "700", flex: 1 },
+  itemPrice: { fontSize: 14, fontWeight: "700" },
   itemDesc: { fontSize: 12, lineHeight: 16 },
-  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 4 },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 2 },
   tag: {
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -405,7 +419,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   tagText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
-  itemPrice: { fontSize: 14, fontWeight: "700", marginTop: 4 },
 });
 
 const modalStyles = StyleSheet.create({
