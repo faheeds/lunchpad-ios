@@ -60,8 +60,12 @@ function ItemModal({
   const [selectedAdditions, setSelectedAdditions] = useState<string[]>([]);
   const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
 
-  const additions = item.options.filter((o) => o.optionType === "ADD");
-  const removals = item.options.filter((o) => o.optionType === "REMOVE");
+  // Backend enum values are "ADD_ON" and "REMOVAL". We also match the
+  // shorter "ADD" / "REMOVE" forms defensively in case future API
+  // responses use a different convention — same pattern as menu.tsx
+  // and weekly-plan.tsx already do.
+  const additions = item.options.filter((o) => o.optionType === "ADD_ON" || o.optionType === "ADD");
+  const removals = item.options.filter((o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE");
 
   const extraCents = additions
     .filter((o) => selectedAdditions.includes(o.name))
