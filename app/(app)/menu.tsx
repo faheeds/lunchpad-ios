@@ -78,8 +78,11 @@ export default function MenuScreen() {
     );
   }
 
-  const sections = data.categories;
-  const totalItems = sections.reduce((sum, s) => sum + s.items.length, 0);
+  // SectionList expects each section to expose its rows on `data`, not
+  // `items` (the name we use on the wire). Adapt here once rather than
+  // forking the server contract.
+  const sections = data.categories.map((c) => ({ title: c.title, data: c.items }));
+  const totalItems = data.categories.reduce((sum, s) => sum + s.items.length, 0);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
@@ -139,7 +142,7 @@ export default function MenuScreen() {
               {section.title}
             </Text>
             <Text style={[styles.sectionCount, { color: theme.textMuted }]}>
-              {section.items.length} item{section.items.length !== 1 ? "s" : ""}
+              {section.data.length} item{section.data.length !== 1 ? "s" : ""}
             </Text>
           </View>
         )}
