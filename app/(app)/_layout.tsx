@@ -92,9 +92,13 @@ export default function AppLayout() {
           ),
         }}
       />
-      {/* Hidden tab — navigated to programmatically */}
+      {/* Hidden tabs — navigated to programmatically */}
       <Tabs.Screen
         name="order/[dateId]"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="weekly-plan"
         options={{ href: null }}
       />
     </Tabs>

@@ -13,6 +13,7 @@ import {
   RefreshControl,
   Image,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates } from "../../lib/api";
@@ -189,6 +190,37 @@ export default function HomeScreen() {
           data={dates}
           keyExtractor={(d) => d.id}
           contentContainerStyle={styles.list}
+          // "Plan the week" lives as the list header so it sits above the
+          // dates without breaking the FlatList's pull-to-refresh / virt.
+          ListHeaderComponent={
+            <TouchableOpacity
+              style={[styles.planCta, { backgroundColor: theme.surface, borderColor: theme.primary }]}
+              onPress={() => router.push("/(app)/weekly-plan")}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Plan the entire week"
+            >
+              <View
+                style={[
+                  styles.planCtaIcon,
+                  { backgroundColor: `${theme.primary}22` },
+                ]}
+              >
+                <Ionicons name="calendar-clear-outline" size={22} color={theme.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[styles.planCtaTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+                >
+                  Plan the week
+                </Text>
+                <Text style={[styles.planCtaSub, { color: theme.textSecondary }]}>
+                  Order all 5 days in one checkout
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+            </TouchableOpacity>
+          }
           renderItem={({ item }) => (
             <DeliveryDateCard
               item={item}
@@ -285,6 +317,24 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 12,
   },
+  planCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    marginBottom: 12,
+  },
+  planCtaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  planCtaTitle: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
+  planCtaSub: { fontSize: 12, marginTop: 2 },
   card: {
     backgroundColor: "#1e293b",
     borderRadius: 16,

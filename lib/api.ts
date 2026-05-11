@@ -82,6 +82,15 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return handleResponse<T>(res);
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const base = await getBaseUrl();
+  const res = await fetch(`${base}${path}`, {
+    method: "DELETE",
+    headers: await buildHeaders(true),
+  });
+  return handleResponse<T>(res);
+}
+
 // ── School code validation ───────────────────────────────────────────────────
 
 /**
@@ -122,7 +131,14 @@ export async function validateSchoolCode(
 
 // ── Typed API calls ──────────────────────────────────────────────────────────
 
-import type { DeliveryDateWithMenu, Parent, OrderHistoryItem, RestaurantMenu } from "./types";
+import type {
+  DeliveryDateWithMenu,
+  Parent,
+  OrderHistoryItem,
+  RestaurantMenu,
+  WeeklyPlansBundle,
+  WeeklyPlan,
+} from "./types";
 
 export const fetchDeliveryDates = () =>
   apiGet<DeliveryDateWithMenu[]>("/api/mobile/native/delivery-dates");
@@ -156,6 +172,29 @@ export const addChild = (data: {
   grade: string;
   allergyNotes?: string;
 }) => apiPost("/api/mobile/native/account/children", data);
+
+// ── Weekly plan ──────────────────────────────────────────────────────────────
+
+export const fetchWeeklyPlans = () =>
+  apiGet<WeeklyPlansBundle>("/api/mobile/native/weekly-plans");
+
+export const upsertWeeklyPlan = (data: {
+  parentChildId: string;
+  weekday: number;
+  menuItemId: string;
+  choice?: string;
+  additions?: string[];
+  removals?: string[];
+}) => apiPost<WeeklyPlan>("/api/mobile/native/weekly-plans", data);
+
+export const deleteWeeklyPlan = (planId: string) =>
+  apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${planId}`);
+
+export const createWeeklyCheckout = () =>
+  apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>(
+    "/api/mobile/native/weekly-checkout",
+    {},
+  );
 
 export const createOrder = (data: {
   deliveryDateId: string;

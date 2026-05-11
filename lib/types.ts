@@ -82,3 +82,41 @@ export type OrderHistoryItem = {
   createdAt: string;
   items: { name: string; lineTotalCents: number; additions: string[]; removals: string[] }[];
 };
+
+// ── Weekly plan bundle ───────────────────────────────────────────────────────
+// Mirrors /api/mobile/native/weekly-plans GET response.
+
+export type WeeklyChild = {
+  id: string;
+  schoolId: string;
+  schoolName: string;
+  studentName: string;
+  grade: string;
+};
+
+export type WeeklyDeliveryDate = {
+  id: string;
+  schoolId: string;
+  deliveryDate: string;
+  cutoffAt: string;
+  school: School;
+  menuItems: MenuItem[];
+};
+
+export type WeeklyPlan = {
+  id: string;
+  parentChildId: string;
+  weekday: number;
+  menuItemId: string;
+  menuItemName: string;
+  choice: string | null;
+  additions: string[];
+  removals: string[];
+  isActive: boolean;
+};
+
+export type WeeklyPlansBundle = {
+  children: WeeklyChild[];
+  deliveryDates: WeeklyDeliveryDate[];
+  plans: WeeklyPlan[];
+};
