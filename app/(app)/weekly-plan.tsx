@@ -41,13 +41,18 @@ import { formatPrice } from "../../lib/store";
 import { useTheme } from "../../lib/theme";
 import type { MenuItem, WeeklyDeliveryDate, WeeklyPlan } from "../../lib/types";
 
-// weekday: 1=Mon ... 5=Fri (matches server convention)
-const WEEKDAYS = [
+// weekday: 1=Mon ... 7=Sun (matches the server's getWeekdayNumber convention)
+// We render whichever weekdays the restaurant actually has scheduled —
+// no hardcoded Mon-Fri / Mon-Thu cap. LunchPad is multi-tenant; some
+// operators do Fri / Sat / Sun deliveries and we shouldn't hide them.
+const ALL_WEEKDAYS = [
   { num: 1, label: "Mon", long: "Monday" },
   { num: 2, label: "Tue", long: "Tuesday" },
   { num: 3, label: "Wed", long: "Wednesday" },
   { num: 4, label: "Thu", long: "Thursday" },
   { num: 5, label: "Fri", long: "Friday" },
+  { num: 6, label: "Sat", long: "Saturday" },
+  { num: 7, label: "Sun", long: "Sunday" },
 ];
 
 /**
@@ -96,21 +101,27 @@ export default function WeeklyPlanScreen() {
     [data, activeChildId]
   );
 
-  // For each weekday, find: (1) is there an open delivery date at this child's
-  // school? (2) does the parent already have a plan for that weekday?
-  const slotsByWeekday = useMemo(() => {
-    if (!data || !activeChild) return new Map<number, { date: WeeklyDeliveryDate | null; plan: WeeklyPlan | null }>();
-    const map = new Map<number, { date: WeeklyDeliveryDate | null; plan: WeeklyPlan | null }>();
-    for (const w of WEEKDAYS) {
+  // Data-driven weekday slots: render a slot for each weekday that
+  // *either* has an open delivery date for this child's school OR has a
+  // pre-existing plan saved. Renders in calendar order (Mon→Sun) even
+  // if dates arrive out of order. If a restaurant runs Mon/Wed/Fri only,
+  // the user sees three slots — no fake "No delivery scheduled" rows.
+  const weekdaySlots = useMemo(() => {
+    if (!data || !activeChild) return [] as Array<{
+      weekday: typeof ALL_WEEKDAYS[number];
+      date: WeeklyDeliveryDate;
+      plan: WeeklyPlan | null;
+    }>;
+    return ALL_WEEKDAYS.flatMap((w) => {
       const date = data.deliveryDates.find(
         (d) =>
           d.schoolId === activeChild.schoolId &&
           getWeekdayFromISO(d.deliveryDate) === w.num
-      ) ?? null;
+      );
+      if (!date) return []; // no delivery → no slot
       const plan = childPlans.find((p) => p.weekday === w.num) ?? null;
-      map.set(w.num, { date, plan });
-    }
-    return map;
+      return [{ weekday: w, date, plan }];
+    });
   }, [data, activeChild, childPlans]);
 
   // Running total across ALL children's plans (the batch covers everything)
@@ -272,76 +283,83 @@ export default function WeeklyPlanScreen() {
           </ScrollView>
         )}
 
-        {/* Weekday slots */}
-        <View style={styles.slotList}>
-          {WEEKDAYS.map((w) => {
-            const slot = slotsByWeekday.get(w.num) ?? { date: null, plan: null };
-            const hasOpenDate = !!slot.date;
-            const item =
-              slot.plan && slot.date
-                ? slot.date.menuItems.find((m) => m.id === slot.plan!.menuItemId)
+        {/* Weekday slots — only rendered for weekdays the restaurant has
+            actually scheduled. Empty state below covers "this restaurant
+            doesn't have any upcoming dates" / "no children yet". */}
+        {weekdaySlots.length === 0 ? (
+          <View style={[styles.noDatesBox, { backgroundColor: theme.surface, borderColor: theme.surfaceElevated }]}>
+            <Text style={[styles.noDatesTitle, { color: theme.textPrimary }]}>
+              No upcoming delivery dates
+            </Text>
+            <Text style={[styles.noDatesSub, { color: theme.textMuted }]}>
+              {activeChild
+                ? `${activeChild.schoolName} doesn't have any open delivery dates this week. Check back soon.`
+                : "Pick a child to see their school's schedule."}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.slotList}>
+            {weekdaySlots.map(({ weekday: w, date, plan }) => {
+              const item = plan
+                ? date.menuItems.find((m) => m.id === plan.menuItemId)
                 : null;
-
-            return (
-              <TouchableOpacity
-                key={w.num}
-                disabled={!hasOpenDate || !activeChildId}
-                onPress={() => {
-                  if (!hasOpenDate || !activeChildId) return;
-                  Haptics.selectionAsync().catch(() => {});
-                  setPickerOpen({ weekday: w.num, childId: activeChildId });
-                }}
-                style={[
-                  styles.slotCard,
-                  {
-                    backgroundColor: theme.surface,
-                    borderColor: slot.plan ? theme.primary : theme.surfaceElevated,
-                    opacity: hasOpenDate ? 1 : 0.45,
-                  },
-                ]}
-              >
-                <View style={[styles.slotDay, { backgroundColor: theme.dark }]}>
-                  <Text style={[styles.slotDayLabel, { color: theme.primary }]}>{w.label}</Text>
-                </View>
-                <View style={styles.slotBody}>
-                  {item ? (
-                    <>
-                      <Text
-                        style={[styles.slotItemName, { color: theme.textPrimary }]}
-                        numberOfLines={1}
-                      >
-                        {item.name}
-                      </Text>
-                      <Text style={[styles.slotPrice, { color: theme.primary }]}>
-                        {formatPrice(item.basePriceCents)}
-                      </Text>
-                    </>
-                  ) : !hasOpenDate ? (
-                    <Text style={[styles.slotPlaceholder, { color: theme.textMuted }]}>
-                      No delivery scheduled
+              return (
+                <TouchableOpacity
+                  key={w.num}
+                  onPress={() => {
+                    if (!activeChildId) return;
+                    Haptics.selectionAsync().catch(() => {});
+                    setPickerOpen({ weekday: w.num, childId: activeChildId });
+                  }}
+                  style={[
+                    styles.slotCard,
+                    {
+                      backgroundColor: theme.surface,
+                      borderColor: plan ? theme.primary : theme.surfaceElevated,
+                    },
+                  ]}
+                >
+                  <View style={[styles.slotDay, { backgroundColor: theme.dark }]}>
+                    <Text style={[styles.slotDayLabel, { color: theme.primary }]}>
+                      {w.label}
                     </Text>
-                  ) : (
-                    <Text style={[styles.slotPlaceholder, { color: theme.textSecondary }]}>
-                      Tap to add a meal
-                    </Text>
+                  </View>
+                  <View style={styles.slotBody}>
+                    {item ? (
+                      <>
+                        <Text
+                          style={[styles.slotItemName, { color: theme.textPrimary }]}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text style={[styles.slotPrice, { color: theme.primary }]}>
+                          {formatPrice(item.basePriceCents)}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={[styles.slotPlaceholder, { color: theme.textSecondary }]}>
+                        Tap to add a meal
+                      </Text>
+                    )}
+                  </View>
+                  {plan && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                        deleteMutation.mutate(plan.id);
+                      }}
+                      style={styles.slotClearBtn}
+                      accessibilityLabel={`Remove ${w.long} meal`}
+                    >
+                      <Ionicons name="close-circle" size={22} color={theme.textMuted} />
+                    </TouchableOpacity>
                   )}
-                </View>
-                {slot.plan && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                      deleteMutation.mutate(slot.plan!.id);
-                    }}
-                    style={styles.slotClearBtn}
-                    accessibilityLabel={`Remove ${w.long} meal`}
-                  >
-                    <Ionicons name="close-circle" size={22} color={theme.textMuted} />
-                  </TouchableOpacity>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         <View style={{ height: 16 }} />
       </ScrollView>
@@ -379,7 +397,9 @@ export default function WeeklyPlanScreen() {
       {/* Item picker modal */}
       {pickerOpen && (
         <ItemPickerModal
-          deliveryDate={slotsByWeekday.get(pickerOpen.weekday)?.date ?? null}
+          deliveryDate={
+            weekdaySlots.find((s) => s.weekday.num === pickerOpen.weekday)?.date ?? null
+          }
           onClose={() => setPickerOpen(null)}
           onPick={(item) => {
             const open = pickerOpen;
@@ -508,6 +528,16 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: "600" },
 
   slotList: { gap: 10 },
+  noDatesBox: {
+    padding: 20,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+  },
+  noDatesTitle: { fontSize: 15, fontWeight: "700" },
+  noDatesSub: { fontSize: 13, lineHeight: 18, textAlign: "center" },
   slotCard: {
     flexDirection: "row",
     alignItems: "center",
