@@ -57,6 +57,16 @@ function ItemModal({
   const hasRequiredChoice = requiredChoices.length > 0;
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
 
+  // Size picker state. Same gating logic as required-choices, but the
+  // picked size's priceCents drives the line total (replaces basePriceCents).
+  // Auto-select the first size when the modal opens so the customer sees
+  // a populated price right away — they can change it before adding.
+  const sizes = item.sizes ?? [];
+  const hasSize = sizes.length > 0;
+  const [selectedSize, setSelectedSize] = useState<string | null>(
+    sizes.length > 0 ? sizes[0].name : null,
+  );
+
   const [selectedAdditions, setSelectedAdditions] = useState<string[]>([]);
   const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
 
@@ -70,11 +80,17 @@ function ItemModal({
   const extraCents = additions
     .filter((o) => selectedAdditions.includes(o.name))
     .reduce((s, o) => s + o.priceDeltaCents, 0);
-  const totalCents = item.basePriceCents + extraCents;
 
-  // Gate "Add to cart": when the item has required choices, the customer
-  // must pick one. Otherwise always enabled.
-  const canAddToCart = !hasRequiredChoice || selectedChoice !== null;
+  // Resolve per-unit base: size price overrides basePriceCents when a
+  // size is in play. Falls back to the first size if state hasn't
+  // initialized (defensive — useState initializer should beat this).
+  const resolvedBaseCents = hasSize
+    ? (sizes.find((s) => s.name === selectedSize) ?? sizes[0]).priceCents
+    : item.basePriceCents;
+  const totalCents = resolvedBaseCents + extraCents;
+
+  // Gate "Add to cart": both required-choice and size must be resolved.
+  const canAddToCart = (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
 
   function toggleAddition(name: string) {
     setSelectedAdditions((prev) =>
@@ -114,8 +130,12 @@ function ItemModal({
       {
         menuItemId: item.id,
         itemName: item.name,
-        basePriceCents: item.basePriceCents,
+        // Snapshot the RESOLVED base (size price when sized, else
+        // item.basePriceCents) so cart math and on-screen line totals
+        // agree with what we'll send to checkout.
+        basePriceCents: resolvedBaseCents,
         choice: selectedChoice ?? undefined,
+        size: selectedSize ?? undefined,
         additions: selectedAdditions,
         removals: selectedRemovals,
         lineTotalCents: totalCents,
@@ -167,6 +187,62 @@ function ItemModal({
               chip; tapping the selected one again clears it. The "Add
               to cart" button stays disabled below until exactly one is
               picked. */}
+          {/* Size picker — rendered first so the customer commits to size
+              before customizing. Each chip shows the absolute price for
+              that size so the customer can compare at a glance. Tapping
+              re-selects (no clear-by-retap) since you always need exactly
+              one when sizes exist. */}
+          {hasSize && (
+            <View style={modalStyles.section}>
+              <View style={modalStyles.sectionTitleRow}>
+                <Text style={modalStyles.sectionTitle}>
+                  Size <Text style={modalStyles.requiredMark}>· required</Text>
+                </Text>
+              </View>
+              <View style={modalStyles.choiceGrid}>
+                {sizes.map((sz) => {
+                  const isSelected = selectedSize === sz.name;
+                  return (
+                    <TouchableOpacity
+                      key={sz.id}
+                      onPress={() => {
+                        setSelectedSize(sz.name);
+                        Haptics.selectionAsync().catch(() => {});
+                      }}
+                      style={[
+                        modalStyles.choiceChip,
+                        {
+                          backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
+                          borderColor: isSelected ? theme.primary : theme.border,
+                        },
+                      ]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: isSelected }}
+                      accessibilityLabel={`${sz.name}, ${formatPrice(sz.priceCents)}${isSelected ? ", selected" : ""}`}
+                    >
+                      <Text
+                        style={[
+                          modalStyles.choiceChipText,
+                          { color: isSelected ? theme.textOnPrimary : theme.textPrimary },
+                        ]}
+                      >
+                        {sz.name}
+                      </Text>
+                      <Text
+                        style={[
+                          modalStyles.sizePrice,
+                          { color: isSelected ? theme.textOnPrimary : theme.textSecondary },
+                        ]}
+                      >
+                        {formatPrice(sz.priceCents)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           {hasRequiredChoice && (
             <View style={modalStyles.section}>
               <View style={modalStyles.sectionTitleRow}>
@@ -626,10 +702,17 @@ const modalStyles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1.5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   choiceChipText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  sizePrice: {
+    fontSize: 13,
+    fontWeight: "500",
   },
   optionRow: {
     flexDirection: "row",

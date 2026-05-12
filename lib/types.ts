@@ -11,6 +11,12 @@ export type MenuOption = {
   priceDeltaCents: number;
 };
 
+export type MenuItemSize = {
+  id: string;
+  name: string;
+  priceCents: number;
+};
+
 export type MenuItem = {
   id: string;
   slug: string;
@@ -28,6 +34,11 @@ export type MenuItem = {
    *  required-choice picker and the "Add to cart" button stays disabled
    *  until one is chosen. Empty / undefined = no required choice. */
   requiredChoices?: string[];
+  /** Size variants with absolute per-size prices. When non-empty, the
+   *  customer MUST pick a size before adding to cart — the selected
+   *  size's `priceCents` becomes the line's per-unit price instead of
+   *  `basePriceCents`. Add-ons stack on top normally. */
+  sizes?: MenuItemSize[];
 };
 
 /** Menu tab response — grouped by category. */
@@ -53,10 +64,10 @@ export type DeliveryDateWithMenu = {
 };
 
 export type CartItem = {
-  /** Stable id for this cart line — derived from menuItemId + choice +
-   *  customizations so two distinct configurations of the same item are
-   *  separate lines, but an exact re-add of the same combo bumps
-   *  `quantity` on the existing line instead of duplicating. */
+  /** Stable id for this cart line — derived from menuItemId + size +
+   *  choice + customizations so two distinct configurations of the same
+   *  item are separate lines, but an exact re-add of the same combo
+   *  bumps `quantity` on the existing line instead of duplicating. */
   cartKey: string;
   menuItemId: string;
   itemName: string;
@@ -66,11 +77,16 @@ export type CartItem = {
    *  validates this against the item's `requiredChoices` list and
    *  rejects checkout if missing. */
   choice?: string;
+  /** Selected size name (e.g. "Medium", "12-inch"). Only present when
+   *  the menu item has size variants. The backend rejects checkout if
+   *  the item has sizes but no size is sent. */
+  size?: string;
   additions: string[];
   removals: string[];
   allergyNotes?: string;
-  /** Per-unit total (base + additions). Multiply by `quantity` for the
-   *  line total shown in the cart. */
+  /** Per-unit total (base + additions). For sized items, base is the
+   *  selected size's priceCents (not the menu item's basePriceCents).
+   *  Multiply by `quantity` for the line total shown in the cart. */
   lineTotalCents: number;
   /** Number of identical units of this configuration. Always ≥ 1. */
   quantity: number;
@@ -78,17 +94,18 @@ export type CartItem = {
 
 /** Build a deterministic key from a cart-item configuration. Same options
  *  in a different order still hash to the same key so we don't end up
- *  with sibling lines that should be one. Includes `choice` so a Beef
- *  burger and a Vegan burger are separate cart lines. */
+ *  with sibling lines that should be one. Includes both `size` and
+ *  `choice` so Beef-Medium and Beef-Large are separate cart lines. */
 export function buildCartKey(
   menuItemId: string,
+  size: string | undefined,
   choice: string | undefined,
   additions: string[],
   removals: string[],
 ): string {
   const a = [...additions].sort().join("|");
   const r = [...removals].sort().join("|");
-  return `${menuItemId}::${choice ?? ""}::${a}::${r}`;
+  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}`;
 }
 
 export type Child = {

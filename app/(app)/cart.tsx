@@ -101,6 +101,7 @@ export default function CartScreen() {
           Array.from({ length: i.quantity }, () => ({
             menuItemId: i.menuItemId,
             choice: i.choice,
+            size: i.size,
             additions: i.additions,
             removals: i.removals,
           })),
@@ -180,7 +181,10 @@ export default function CartScreen() {
             return (
               <View key={item.cartKey} style={styles.cartItem}>
                 <View style={styles.cartItemInfo}>
-                  <Text style={styles.cartItemName}>{item.itemName}</Text>
+                  <Text style={styles.cartItemName}>
+                    {item.itemName}
+                    {item.size ? <Text style={styles.cartItemNameSize}>{` · ${item.size}`}</Text> : null}
+                  </Text>
                   {item.choice && (
                     <Text style={styles.cartItemChoice}>
                       {item.choice}
@@ -445,6 +449,13 @@ const styles = StyleSheet.create({
   },
   cartItemInfo: { flex: 1, gap: 3 },
   cartItemName: { fontSize: 15, fontWeight: "600", color: "#f1f5f9" },
+  cartItemNameSize: {
+    // Inline size suffix (e.g. " · Medium") rendered in lighter weight
+    // so the item name reads as primary and the size as a qualifier.
+    fontSize: 14,
+    fontWeight: "400",
+    color: "#94a3b8",
+  },
   cartItemMods: { fontSize: 12, color: "#64748b" },
   cartItemChoice: {
     // Slightly brighter than additions/removals so the required pick-one

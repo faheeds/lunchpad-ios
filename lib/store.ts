@@ -31,7 +31,7 @@ export const useCart = create<CartStore>((set, get) => ({
 
   addItem: (input, deliveryDateId, schoolId) =>
     set((state) => {
-      const cartKey = buildCartKey(input.menuItemId, input.choice, input.additions, input.removals);
+      const cartKey = buildCartKey(input.menuItemId, input.size, input.choice, input.additions, input.removals);
       // Switching delivery dates wipes the cart — different menus / different
       // kitchens. Start a fresh single-item cart on the new date.
       if (state.deliveryDateId && state.deliveryDateId !== deliveryDateId) {
