@@ -147,9 +147,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 16,
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: 23,
     paddingHorizontal: 8,
   },
   refPill: {
@@ -174,14 +174,14 @@ const styles = StyleSheet.create({
   },
   helpBlock: {
     width: "100%",
-    padding: 16,
+    padding: 18,
     borderRadius: 14,
-    gap: 4,
-    marginTop: 8,
+    gap: 6,
+    marginTop: 12,
   },
-  helpTitle: { fontSize: 14, fontWeight: "700" },
-  helpText: { fontSize: 13, lineHeight: 18 },
-  helpEmail: { fontSize: 13, fontWeight: "600", marginTop: 4 },
+  helpTitle: { fontSize: 15, fontWeight: "700", lineHeight: 20 },
+  helpText: { fontSize: 15, lineHeight: 22 },
+  helpEmail: { fontSize: 15, fontWeight: "600", marginTop: 6 },
   button: {
     borderRadius: 14,
     paddingVertical: 14,

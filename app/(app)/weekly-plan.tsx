@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
 
   emptyIcon: { fontSize: 56 },
   emptyTitle: { fontSize: 22, fontWeight: "800", textAlign: "center" },
-  emptySub: { fontSize: 14, lineHeight: 20, textAlign: "center" },
+  emptySub: { fontSize: 15, lineHeight: 22, textAlign: "center" },
   primaryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
   primaryBtnText: { fontSize: 15, fontWeight: "700" },
 
@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
 
   scroll: { paddingHorizontal: 16, paddingBottom: 140, gap: 12 },
-  subtitle: { fontSize: 13, lineHeight: 19 },
+  subtitle: { fontSize: 15, lineHeight: 21 },
 
   chipRow: { gap: 8, paddingVertical: 4, flexDirection: "row" },
   chip: {
@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   noDatesTitle: { fontSize: 15, fontWeight: "700" },
-  noDatesSub: { fontSize: 13, lineHeight: 18, textAlign: "center" },
+  noDatesSub: { fontSize: 15, lineHeight: 21, textAlign: "center" },
   slotCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -614,7 +614,7 @@ const modalStyles = StyleSheet.create({
   },
   itemImage: { width: 80, height: 80 },
   itemBody: { flex: 1, padding: 12, gap: 3 },
-  itemName: { fontSize: 14, fontWeight: "700" },
-  itemDesc: { fontSize: 12, lineHeight: 16 },
-  itemPrice: { fontSize: 14, fontWeight: "700", marginTop: 2 },
+  itemName: { fontSize: 15, fontWeight: "700" },
+  itemDesc: { fontSize: 13, lineHeight: 18 },
+  itemPrice: { fontSize: 15, fontWeight: "700", marginTop: 2 },
 });

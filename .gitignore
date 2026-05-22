@@ -6,3 +6,8 @@ ios/App/DerivedData/
 dist/
 .DS_Store
 .expo/
+
+# Agent pipeline run logs - written by CI, never committed
+tsc.log
+test.log
+build.log
