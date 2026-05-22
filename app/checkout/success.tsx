@@ -46,7 +46,7 @@ export default function CheckoutSuccess() {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [clearCart, scaleAnim, opacityAnim]);
+  }, [clearCart]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>

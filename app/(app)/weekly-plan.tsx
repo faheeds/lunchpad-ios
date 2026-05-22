@@ -598,6 +598,9 @@ function ItemPickerModal({
                           borderColor: isSelected ? theme.primary : theme.border,
                         },
                       ]}
+                      accessibilityLabel={`${sz.name}, ${formatPrice(sz.priceCents)}`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <Text style={[modalStyles.custChoiceText, { color: isSelected ? theme.textOnPrimary : theme.textPrimary }]}>
                         {sz.name}
@@ -631,6 +634,9 @@ function ItemPickerModal({
                           borderColor: isSelected ? theme.primary : theme.border,
                         },
                       ]}
+                      accessibilityLabel={name}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <Text style={[modalStyles.custChoiceText, { color: isSelected ? theme.textOnPrimary : theme.textPrimary }]}>
                         {name}
@@ -652,6 +658,9 @@ function ItemPickerModal({
                   key={opt.id}
                   onPress={() => toggleAddition(opt.name)}
                   style={modalStyles.custOptionRow}
+                  accessibilityLabel={opt.name}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selectedAdditions.includes(opt.name) }}
                 >
                   <View style={[
                     modalStyles.checkbox,
@@ -682,6 +691,9 @@ function ItemPickerModal({
                   key={opt.id}
                   onPress={() => toggleRemoval(opt.name)}
                   style={modalStyles.custOptionRow}
+                  accessibilityLabel={opt.name}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selectedRemovals.includes(opt.name) }}
                 >
                   <View style={[
                     modalStyles.checkbox,
@@ -709,6 +721,11 @@ function ItemPickerModal({
             ]}
             onPress={() => onPick(selectedItem, selectedSize ?? undefined, selectedChoice ?? undefined, selectedAdditions, selectedRemovals)}
             disabled={!canConfirm}
+            accessibilityRole="button"
+            accessibilityLabel={!canConfirm
+              ? "Pick required options above"
+              : `Confirm, ${formatPrice(totalCents)}`}
+            accessibilityState={{ disabled: !canConfirm }}
           >
             <Text
               style={[
