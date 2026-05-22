@@ -195,7 +195,7 @@ export default function HomeScreen() {
           ListHeaderComponent={
             <TouchableOpacity
               style={[styles.planCta, { backgroundColor: theme.surface, borderColor: theme.primary }]}
-              onPress={() => router.push("/(app)/weekly-plan" as any)}
+              onPress={() => router.push("/(app)/weekly-plan")}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Plan the entire week"
