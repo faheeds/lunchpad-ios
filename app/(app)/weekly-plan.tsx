@@ -470,6 +470,8 @@ function ItemPickerModal({
                 }}
                 style={[modalStyles.itemCard, { backgroundColor: theme.surface }]}
                 activeOpacity={0.8}
+                accessibilityLabel={`Select ${item.name}`}
+                accessibilityRole="button"
               >
                 {item.imageUrl ? (
                   <Image source={{ uri: item.imageUrl }} style={modalStyles.itemImage} />
