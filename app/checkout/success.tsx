@@ -14,6 +14,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../lib/theme";
+import { useCart } from "../../lib/store";
 
 export default function CheckoutSuccess() {
   const { orderId } = useLocalSearchParams<{ orderId?: string }>();
@@ -21,11 +22,14 @@ export default function CheckoutSuccess() {
   const theme = useTheme();
   const restaurantName = theme.restaurant?.name;
   const supportEmail = theme.restaurant?.contactEmail;
+  const clearCart = useCart((s) => s.clearCart);
 
   // Success haptic on mount — feels like the receipt printing.
+  // Clear cart only after payment is confirmed.
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-  }, []);
+    clearCart();
+  }, [clearCart]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
