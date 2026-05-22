@@ -332,12 +332,16 @@ export default function AccountScreen() {
                   .slice(0, 2)
                   .join(", ") + (order.items.length > 2 ? ` + ${order.items.length - 2} more` : "");
                 return (
-                  <View
+                  <TouchableOpacity
                     key={order.id}
                     style={[
                       styles.orderCard,
                       { backgroundColor: theme.surface, borderColor: theme.border },
                     ]}
+                    onPress={() => router.push(`/(app)/orders/${order.id}`)}
+                    accessibilityLabel={`Order ${order.orderNumber.slice(-6)}`}
+                    accessibilityRole="button"
+                    activeOpacity={0.6}
                   >
                     {/* Header row: status pill + total */}
                     <View style={styles.orderHeader}>
@@ -368,7 +372,7 @@ export default function AccountScreen() {
                         {"   #" + order.orderNumber.slice(-6)}
                       </Text>
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}

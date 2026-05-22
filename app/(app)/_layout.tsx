@@ -98,6 +98,10 @@ export default function AppLayout() {
         options={{ href: null }}
       />
       <Tabs.Screen
+        name="orders/[orderId]"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="weekly-plan"
         options={{ href: null }}
       />
