@@ -1,6 +1,6 @@
 Starting Metro Bundler
 iOS node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (1145/1145)
-iOS Bundled 3581ms node_modules/expo-router/entry.js (1145 modules)
+iOS Bundled 3361ms node_modules/expo-router/entry.js (1145 modules)
 
 › Assets (61):
 assets/icon.png (9.6 kB)
@@ -55,7 +55,7 @@ node_modules/expo-router/assets/sitemap.png (465 B)
 node_modules/expo-router/assets/unmatched.png (4.75 kB)
 
 › ios bundles (1):
-_expo/static/js/ios/entry-8443a083feaf6e80c3ff7de11731de9f.hbc (3.23 MB)
+_expo/static/js/ios/entry-15ad47bb7c45ad7dc3c6a094d3f8cc63.hbc (3.23 MB)
 
 › Files (1):
 metadata.json (4.17 kB)
