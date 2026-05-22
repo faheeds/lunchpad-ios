@@ -22,7 +22,7 @@ import * as Haptics from "expo-haptics";
 import { fetchDeliveryDates } from "../../../lib/api";
 import { useCart, formatPrice } from "../../../lib/store";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
-import { useTheme } from "../../../lib/theme";
+import { useTheme, type Theme } from "../../../lib/theme";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -555,7 +555,7 @@ export default function OrderScreen() {
   );
 }
 
-const styles = (theme: any) => StyleSheet.create({
+const styles = (theme: Theme) => StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   loadingText: { color: theme.textMuted, fontSize: 15 },
@@ -629,7 +629,7 @@ const styles = (theme: any) => StyleSheet.create({
   cartBarPrice: { fontSize: 16, fontWeight: "700" },
 });
 
-const modalStyles = (theme: any) => StyleSheet.create({
+const modalStyles = (theme: Theme) => StyleSheet.create({
   container: { flex: 1 },
   handleRow: {
     alignItems: "center",

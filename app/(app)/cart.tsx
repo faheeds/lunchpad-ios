@@ -22,7 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
 import { fetchAccount, createOrder, getJWT } from "../../lib/api";
 import type { Child } from "../../lib/types";
-import { useTheme } from "../../lib/theme";
+import { useTheme, type Theme } from "../../lib/theme";
 
 export default function CartScreen() {
   const router = useRouter();
@@ -406,8 +406,8 @@ function Field({
   onChangeText: (t: string) => void;
   placeholder?: string;
   keyboardType?: "default" | "email-address";
-  theme?: any;
-  screenStyles?: any;
+  theme?: Theme;
+  screenStyles?: ReturnType<typeof styles>;
 }) {
   return (
     <View style={screenStyles?.fieldContainer}>
@@ -426,7 +426,7 @@ function Field({
   );
 }
 
-const styles = (theme: any) => StyleSheet.create({
+const styles = (theme: Theme) => StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
