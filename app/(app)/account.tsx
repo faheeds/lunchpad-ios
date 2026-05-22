@@ -242,6 +242,9 @@ export default function AccountScreen() {
                             },
                           ]}
                           onPress={() => setSelectedSchoolId(school.id)}
+                          accessibilityRole="radio"
+                          accessibilityLabel={`Select ${school.name}`}
+                          accessibilityState={{ selected: selectedSchoolId === school.id }}
                         >
                           <Text
                             style={[
