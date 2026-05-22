@@ -174,36 +174,36 @@ export default function CartScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Cart items */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Items</Text>
+        <View style={[styles.section, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Items</Text>
           {items.map((item) => {
             const lineTotal = item.lineTotalCents * item.quantity;
             return (
-              <View key={item.cartKey} style={styles.cartItem}>
+              <View key={item.cartKey} style={[styles.cartItem, { borderBottomColor: theme.border }]}>
                 <View style={styles.cartItemInfo}>
-                  <Text style={styles.cartItemName}>
+                  <Text style={[styles.cartItemName, { color: theme.textPrimary }]}>
                     {item.itemName}
-                    {item.size ? <Text style={styles.cartItemNameSize}>{` · ${item.size}`}</Text> : null}
+                    {item.size ? <Text style={[styles.cartItemNameSize, { color: theme.textSecondary }]}>{` · ${item.size}`}</Text> : null}
                   </Text>
                   {item.choice && (
-                    <Text style={styles.cartItemChoice}>
+                    <Text style={[styles.cartItemChoice, { color: theme.textSecondary }]}>
                       {item.choice}
                     </Text>
                   )}
                   {item.additions.length > 0 && (
-                    <Text style={styles.cartItemMods}>
+                    <Text style={[styles.cartItemMods, { color: theme.textMuted }]}>
                       + {item.additions.join(", ")}
                     </Text>
                   )}
                   {item.removals.length > 0 && (
-                    <Text style={styles.cartItemMods}>
+                    <Text style={[styles.cartItemMods, { color: theme.textMuted }]}>
                       − {item.removals.join(", ")}
                     </Text>
                   )}
-                  <Text style={styles.cartItemPrice}>
+                  <Text style={[styles.cartItemPrice, { color: theme.primary }]}>
                     {formatPrice(lineTotal)}
                     {item.quantity > 1 ? (
-                      <Text style={styles.cartItemPriceUnit}>
+                      <Text style={[styles.cartItemPriceUnit, { color: theme.textMuted }]}>
                         {"  "}({formatPrice(item.lineTotalCents)} each)
                       </Text>
                     ) : null}
@@ -211,7 +211,7 @@ export default function CartScreen() {
                 </View>
 
                 {/* Quantity stepper */}
-                <View style={[styles.qtyControl, { backgroundColor: theme.dark }]}>
+                <View style={[styles.qtyControl, { backgroundColor: theme.surface }]}>
                   <TouchableOpacity
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -254,26 +254,31 @@ export default function CartScreen() {
         </View>
 
         {/* Student info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Student</Text>
+        <View style={[styles.section, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Student</Text>
 
           {children.length > 0 && (
             <View style={styles.childPicker}>
-              <Text style={styles.fieldLabel}>Saved profiles</Text>
+              <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>Saved profiles</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.childRow}>
                 {children.map((child) => (
                   <TouchableOpacity
                     key={child.id}
                     style={[
                       styles.childChip,
-                      selectedChildId === child.id && styles.childChipSelected,
+                      {
+                        backgroundColor: selectedChildId === child.id ? theme.accent : theme.dark,
+                        borderColor: selectedChildId === child.id ? theme.accent : theme.border,
+                      },
                     ]}
                     onPress={() => setSelectedChildId(child.id)}
                   >
                     <Text
                       style={[
                         styles.childChipText,
-                        selectedChildId === child.id && styles.childChipTextSelected,
+                        {
+                          color: selectedChildId === child.id ? theme.textOnPrimary : theme.textSecondary,
+                        },
                       ]}
                     >
                       {child.studentName}
@@ -283,14 +288,19 @@ export default function CartScreen() {
                 <TouchableOpacity
                   style={[
                     styles.childChip,
-                    selectedChildId === null && styles.childChipSelected,
+                    {
+                      backgroundColor: selectedChildId === null ? theme.accent : theme.dark,
+                      borderColor: selectedChildId === null ? theme.accent : theme.border,
+                    },
                   ]}
                   onPress={() => setSelectedChildId(null)}
                 >
                   <Text
                     style={[
                       styles.childChipText,
-                      selectedChildId === null && styles.childChipTextSelected,
+                      {
+                        color: selectedChildId === null ? theme.textOnPrimary : theme.textSecondary,
+                      },
                     ]}
                   >
                     + New
@@ -307,40 +317,44 @@ export default function CartScreen() {
                 value={studentName}
                 onChangeText={setStudentName}
                 placeholder="First Last"
+                theme={theme}
               />
               <Field
                 label="Grade"
                 value={grade}
                 onChangeText={setGrade}
                 placeholder="e.g. 3rd"
+                theme={theme}
               />
               <Field
                 label="Allergy notes (optional)"
                 value={allergyNotes}
                 onChangeText={setAllergyNotes}
                 placeholder="e.g. nut allergy"
+                theme={theme}
               />
             </>
           )}
           {selectedChild && (
-            <View style={styles.selectedChildInfo}>
-              <Text style={styles.selectedChildName}>{selectedChild.studentName}</Text>
-              <Text style={styles.selectedChildGrade}>Grade: {selectedChild.grade}</Text>
+            <View style={[styles.selectedChildInfo, { backgroundColor: theme.dark }]}>
+              <Text style={[styles.selectedChildName, { color: theme.textPrimary }]}>{selectedChild.studentName}</Text>
+              <Text style={[styles.selectedChildGrade, { color: theme.textSecondary }]}>Grade: {selectedChild.grade}</Text>
               {selectedChild.allergyNotes && (
-                <Text style={styles.selectedChildAllergy}>⚠️ {selectedChild.allergyNotes}</Text>
+                <Text style={[styles.selectedChildAllergy, { color: theme.warning }]}>⚠️ {selectedChild.allergyNotes}</Text>
               )}
             </View>
           )}
         </View>
 
         {/* Parent info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your info</Text>
+        <View style={[styles.section, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Your info</Text>
           <Field
             label="Your name"
             value={parentName || account?.name || ""}
             onChangeText={setParentName}
             placeholder="First Last"
+            theme={theme}
           />
           <Field
             label="Email (for receipt)"
@@ -348,20 +362,21 @@ export default function CartScreen() {
             onChangeText={setParentEmail}
             placeholder="you@example.com"
             keyboardType="email-address"
+            theme={theme}
           />
         </View>
 
         {/* Total */}
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalAmount}>{formatPrice(total)}</Text>
+          <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Total</Text>
+          <Text style={[styles.totalAmount, { color: theme.textPrimary }]}>{formatPrice(total)}</Text>
         </View>
 
         <View style={{ height: 32 }} />
       </ScrollView>
 
       {/* Checkout button */}
-      <SafeAreaView style={styles.footer}>
+      <SafeAreaView style={[styles.footer, { backgroundColor: theme.dark, borderTopColor: theme.border }]}>
         <TouchableOpacity
           style={[
             styles.checkoutBtn,
@@ -392,22 +407,24 @@ function Field({
   onChangeText,
   placeholder,
   keyboardType,
+  theme,
 }: {
   label: string;
   value: string;
   onChangeText: (t: string) => void;
   placeholder?: string;
   keyboardType?: "default" | "email-address";
+  theme: ReturnType<typeof useTheme>;
 }) {
   return (
     <View style={styles.fieldContainer}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={[styles.fieldLabel, { color: theme.textMuted }]}>{label}</Text>
       <TextInput
-        style={styles.input}
+        style={[styles.input, { backgroundColor: theme.dark, borderColor: theme.border, color: theme.textPrimary }]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#475569"
+        placeholderTextColor={theme.textMuted}
         keyboardType={keyboardType ?? "default"}
         autoCapitalize={keyboardType === "email-address" ? "none" : "words"}
         autoCorrect={false}
@@ -417,17 +434,16 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 12,
   },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: "#f1f5f9", letterSpacing: -0.5 },
-  headerSub: { fontSize: 14, color: "#64748b", marginTop: 2 },
+  headerTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5 },
+  headerSub: { fontSize: 14, marginTop: 2 },
   scroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 16 },
   section: {
-    backgroundColor: "#1e293b",
     borderRadius: 16,
     padding: 16,
     gap: 12,
@@ -435,7 +451,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -445,27 +460,20 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#0f172a",
   },
   cartItemInfo: { flex: 1, gap: 3 },
-  cartItemName: { fontSize: 15, fontWeight: "600", color: "#f1f5f9" },
+  cartItemName: { fontSize: 15, fontWeight: "600" },
   cartItemNameSize: {
-    // Inline size suffix (e.g. " · Medium") rendered in lighter weight
-    // so the item name reads as primary and the size as a qualifier.
     fontSize: 14,
     fontWeight: "400",
-    color: "#94a3b8",
   },
-  cartItemMods: { fontSize: 12, color: "#64748b" },
+  cartItemMods: { fontSize: 12 },
   cartItemChoice: {
-    // Slightly brighter than additions/removals so the required pick-one
-    // reads as a primary attribute of the line (not just a modification).
     fontSize: 12,
     fontWeight: "600",
-    color: "#94a3b8",
   },
-  cartItemPrice: { fontSize: 14, fontWeight: "600", color: "#f59e0b", marginTop: 2 },
-  cartItemPriceUnit: { fontSize: 11, fontWeight: "500", color: "#64748b" },
+  cartItemPrice: { fontSize: 14, fontWeight: "600", marginTop: 2 },
+  cartItemPriceUnit: { fontSize: 11, fontWeight: "500" },
   removeBtn: { padding: 4 },
   qtyControl: {
     flexDirection: "row",
@@ -494,66 +502,56 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#0f172a",
     marginRight: 8,
     borderWidth: 1.5,
-    borderColor: "#334155",
   },
-  childChipSelected: { borderColor: "#f59e0b", backgroundColor: "#f59e0b1a" },
-  childChipText: { fontSize: 14, color: "#94a3b8", fontWeight: "500" },
-  childChipTextSelected: { color: "#f59e0b" },
+  childChipSelected: {},
+  childChipText: { fontSize: 14, fontWeight: "500" },
+  childChipTextSelected: {},
   selectedChildInfo: {
-    backgroundColor: "#0f172a",
     borderRadius: 10,
     padding: 12,
     gap: 4,
   },
-  selectedChildName: { fontSize: 15, fontWeight: "700", color: "#f1f5f9" },
-  selectedChildGrade: { fontSize: 13, color: "#94a3b8" },
-  selectedChildAllergy: { fontSize: 13, color: "#fbbf24" },
+  selectedChildName: { fontSize: 15, fontWeight: "700" },
+  selectedChildGrade: { fontSize: 13 },
+  selectedChildAllergy: { fontSize: 13 },
   fieldContainer: { gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: "600", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 },
+  fieldLabel: { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
   input: {
-    backgroundColor: "#0f172a",
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: "#334155",
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: "#f1f5f9",
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 4,
   },
-  totalLabel: { fontSize: 18, fontWeight: "600", color: "#94a3b8" },
-  totalAmount: { fontSize: 22, fontWeight: "800", color: "#f1f5f9" },
+  totalLabel: { fontSize: 18, fontWeight: "600" },
+  totalAmount: { fontSize: 22, fontWeight: "800" },
   footer: {
     paddingHorizontal: 16,
     paddingBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    backgroundColor: "#0f172a",
   },
   checkoutBtn: {
-    backgroundColor: "#f59e0b",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
   },
   checkoutBtnDisabled: { opacity: 0.5 },
-  checkoutBtnText: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  checkoutBtnText: { fontSize: 17, fontWeight: "700" },
   empty: {
     flex: 1,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
     paddingHorizontal: 40,
   },
   emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", color: "#f1f5f9", textAlign: "center" },
-  emptySub: { fontSize: 14, color: "#64748b", textAlign: "center", lineHeight: 20 },
+  emptyTitle: { fontSize: 20, fontWeight: "700", textAlign: "center" },
+  emptySub: { fontSize: 15, textAlign: "center", lineHeight: 20 },
 });

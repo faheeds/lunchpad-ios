@@ -151,7 +151,7 @@ function ItemModal({
       <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
         {/* Handle + close */}
         <View style={modalStyles.handleRow}>
-          <View style={modalStyles.handle} />
+          <View style={[modalStyles.handle, { backgroundColor: theme.border }]} />
           <TouchableOpacity
             onPress={onClose}
             style={modalStyles.closeBtn}
@@ -167,19 +167,19 @@ function ItemModal({
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={modalStyles.image} />
           ) : (
-            <View style={modalStyles.imagePlaceholder}>
+            <View style={[modalStyles.imagePlaceholder, { backgroundColor: theme.surface }]}>
               <Text style={modalStyles.imagePlaceholderText}>🍽️</Text>
             </View>
           )}
 
           {/* Name + price */}
           <View style={modalStyles.titleRow}>
-            <Text style={modalStyles.itemName}>{item.name}</Text>
-            <Text style={modalStyles.itemPrice}>{formatPrice(totalCents)}</Text>
+            <Text style={[modalStyles.itemName, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>{item.name}</Text>
+            <Text style={[modalStyles.itemPrice, { color: theme.primary }]}>{formatPrice(totalCents)}</Text>
           </View>
 
           {item.description && (
-            <Text style={modalStyles.description}>{item.description}</Text>
+            <Text style={[modalStyles.description, { color: theme.textSecondary }]}>{item.description}</Text>
           )}
 
           {/* Required choice picker — rendered first so it visually
@@ -195,8 +195,8 @@ function ItemModal({
           {hasSize && (
             <View style={modalStyles.section}>
               <View style={modalStyles.sectionTitleRow}>
-                <Text style={modalStyles.sectionTitle}>
-                  Size <Text style={modalStyles.requiredMark}>· required</Text>
+                <Text style={[modalStyles.sectionTitle, { color: theme.textMuted }]}>
+                  Size <Text style={[modalStyles.requiredMark, { color: theme.accent }]}>· required</Text>
                 </Text>
               </View>
               <View style={modalStyles.choiceGrid}>
@@ -246,8 +246,8 @@ function ItemModal({
           {hasRequiredChoice && (
             <View style={modalStyles.section}>
               <View style={modalStyles.sectionTitleRow}>
-                <Text style={modalStyles.sectionTitle}>
-                  Pick one <Text style={modalStyles.requiredMark}>· required</Text>
+                <Text style={[modalStyles.sectionTitle, { color: theme.textMuted }]}>
+                  Pick one <Text style={[modalStyles.requiredMark, { color: theme.accent }]}>· required</Text>
                 </Text>
               </View>
               <View style={modalStyles.choiceGrid}>
@@ -286,7 +286,7 @@ function ItemModal({
           {/* Additions */}
           {additions.length > 0 && (
             <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Add-ons</Text>
+              <Text style={[modalStyles.sectionTitle, { color: theme.textMuted }]}>Add-ons</Text>
               {additions.map((opt) => (
                 <TouchableOpacity
                   key={opt.id}
@@ -295,15 +295,15 @@ function ItemModal({
                 >
                   <View style={[
                     modalStyles.checkbox,
-                    selectedAdditions.includes(opt.name) && modalStyles.checkboxChecked,
+                    selectedAdditions.includes(opt.name) && [modalStyles.checkboxChecked, { backgroundColor: theme.accent, borderColor: theme.accent }],
                   ]}>
                     {selectedAdditions.includes(opt.name) && (
-                      <Ionicons name="checkmark" size={14} color="#0f172a" />
+                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
                     )}
                   </View>
-                  <Text style={modalStyles.optionName}>{opt.name}</Text>
+                  <Text style={[modalStyles.optionName, { color: theme.textPrimary }]}>{opt.name}</Text>
                   {opt.priceDeltaCents > 0 && (
-                    <Text style={modalStyles.optionPrice}>
+                    <Text style={[modalStyles.optionPrice, { color: theme.textMuted }]}>
                       +{formatPrice(opt.priceDeltaCents)}
                     </Text>
                   )}
@@ -315,7 +315,7 @@ function ItemModal({
           {/* Removals */}
           {removals.length > 0 && (
             <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Remove</Text>
+              <Text style={[modalStyles.sectionTitle, { color: theme.textMuted }]}>Remove</Text>
               {removals.map((opt) => (
                 <TouchableOpacity
                   key={opt.id}
@@ -324,13 +324,13 @@ function ItemModal({
                 >
                   <View style={[
                     modalStyles.checkbox,
-                    selectedRemovals.includes(opt.name) && modalStyles.checkboxChecked,
+                    selectedRemovals.includes(opt.name) && [modalStyles.checkboxChecked, { backgroundColor: theme.accent, borderColor: theme.accent }],
                   ]}>
                     {selectedRemovals.includes(opt.name) && (
-                      <Ionicons name="checkmark" size={14} color="#0f172a" />
+                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
                     )}
                   </View>
-                  <Text style={modalStyles.optionName}>{opt.name}</Text>
+                  <Text style={[modalStyles.optionName, { color: theme.textPrimary }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -342,7 +342,7 @@ function ItemModal({
             price) but dim it and add an inline hint when it's gated.
             Tapping while disabled does nothing — the chip picker above
             is the call-to-action in that state. */}
-        <SafeAreaView style={modalStyles.footer}>
+        <SafeAreaView style={[modalStyles.footer, { backgroundColor: theme.dark, borderTopColor: theme.border }]}>
           <TouchableOpacity
             style={[
               modalStyles.addButton,
@@ -552,9 +552,9 @@ export default function OrderScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  center: { flex: 1, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" },
-  loadingText: { color: "#64748b", fontSize: 15 },
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  loadingText: { fontSize: 15 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -564,11 +564,10 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   headerText: { flex: 1 },
-  headerDate: { fontSize: 18, fontWeight: "700", color: "#f1f5f9" },
-  headerSchool: { fontSize: 13, color: "#64748b", marginTop: 1 },
+  headerDate: { fontSize: 18, fontWeight: "700" },
+  headerSchool: { fontSize: 13, marginTop: 1 },
   list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10 },
   menuCard: {
-    backgroundColor: "#1e293b",
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -579,22 +578,20 @@ const styles = StyleSheet.create({
   menuImagePlaceholder: {
     width: 80,
     height: 80,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
   },
   menuInfo: { flex: 1, padding: 12, gap: 3 },
-  menuName: { fontSize: 15, fontWeight: "700", color: "#f1f5f9" },
-  menuDesc: { fontSize: 12, color: "#64748b", lineHeight: 16 },
-  menuPrice: { fontSize: 14, fontWeight: "600", color: "#f59e0b", marginTop: 2 },
+  menuName: { fontSize: 15, fontWeight: "700" },
+  menuDesc: { fontSize: 15, lineHeight: 20 },
+  menuPrice: { fontSize: 14, fontWeight: "600", marginTop: 2 },
   soldOutBadge: {
     marginRight: 14,
-    backgroundColor: "#334155",
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  soldOutText: { fontSize: 11, color: "#64748b", fontWeight: "600" },
+  soldOutText: { fontSize: 11, fontWeight: "600" },
   inCartBadge: { marginRight: 14 },
   addIcon: { marginRight: 14 },
   cartBarWrapper: {
@@ -606,7 +603,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   cartBar: {
-    backgroundColor: "#f59e0b",
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -615,20 +611,19 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cartBadge: {
-    backgroundColor: "#0f172a",
     borderRadius: 10,
     width: 24,
     height: 24,
     alignItems: "center",
     justifyContent: "center",
   },
-  cartBadgeText: { fontSize: 12, fontWeight: "800", color: "#f59e0b" },
-  cartBarText: { flex: 1, fontSize: 16, fontWeight: "700", color: "#0f172a" },
-  cartBarPrice: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  cartBadgeText: { fontSize: 12, fontWeight: "800" },
+  cartBarText: { flex: 1, fontSize: 16, fontWeight: "700" },
+  cartBarPrice: { fontSize: 16, fontWeight: "700" },
 });
 
 const modalStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+  container: { flex: 1 },
   handleRow: {
     alignItems: "center",
     paddingTop: 12,
@@ -639,7 +634,6 @@ const modalStyles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: "#334155",
     borderRadius: 2,
     position: "absolute",
     top: 16,
@@ -655,7 +649,6 @@ const modalStyles = StyleSheet.create({
   imagePlaceholder: {
     width: "100%",
     height: 160,
-    backgroundColor: "#1e293b",
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -668,14 +661,13 @@ const modalStyles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
   },
-  itemName: { flex: 1, fontSize: 22, fontWeight: "800", color: "#f1f5f9" },
-  itemPrice: { fontSize: 20, fontWeight: "700", color: "#f59e0b" },
-  description: { fontSize: 14, color: "#94a3b8", lineHeight: 20 },
+  itemName: { flex: 1, fontSize: 22, fontWeight: "800" },
+  itemPrice: { fontSize: 20, fontWeight: "700" },
+  description: { fontSize: 15, lineHeight: 20 },
   section: { gap: 8 },
   sectionTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -686,7 +678,6 @@ const modalStyles = StyleSheet.create({
     marginBottom: 4,
   },
   requiredMark: {
-    color: "#f59e0b",
     fontSize: 12,
     fontWeight: "700",
     textTransform: "none",
@@ -720,32 +711,27 @@ const modalStyles = StyleSheet.create({
     gap: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#1e293b",
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: "#334155",
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxChecked: { backgroundColor: "#f59e0b", borderColor: "#f59e0b" },
-  optionName: { flex: 1, fontSize: 15, color: "#f1f5f9" },
-  optionPrice: { fontSize: 14, color: "#64748b" },
+  checkboxChecked: { borderWidth: 1.5 },
+  optionName: { flex: 1, fontSize: 15 },
+  optionPrice: { fontSize: 14 },
   footer: {
     paddingHorizontal: 20,
     paddingBottom: 8,
-    backgroundColor: "#0f172a",
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
   },
   addButton: {
-    backgroundColor: "#f59e0b",
     borderRadius: 14,
     paddingVertical: 15,
     alignItems: "center",
   },
-  addButtonText: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  addButtonText: { fontSize: 17, fontWeight: "700" },
 });

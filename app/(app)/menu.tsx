@@ -119,7 +119,7 @@ export default function MenuScreen() {
                 <Text
                   style={[
                     styles.heroTitle,
-                    { color: "#ffffff", fontFamily: theme.fontDisplay },
+                    { color: theme.textOnPrimary, fontFamily: theme.fontDisplay },
                   ]}
                 >
                   {data.restaurantName}
@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
   },
   itemName: { fontSize: 15, fontWeight: "700", flex: 1 },
   itemPrice: { fontSize: 14, fontWeight: "700" },
-  itemDesc: { fontSize: 12, lineHeight: 16 },
+  itemDesc: { fontSize: 15, lineHeight: 20 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 2 },
   tag: {
     paddingHorizontal: 7,
