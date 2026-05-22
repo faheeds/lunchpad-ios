@@ -110,7 +110,7 @@ export default function SchoolCodeScreen() {
               styles.input,
               {
                 backgroundColor: theme.dark,
-                borderColor: theme.surfaceElevated,
+                borderColor: theme.border,
                 color: theme.textPrimary,
               },
             ]}
@@ -153,7 +153,6 @@ export default function SchoolCodeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
   },
   inner: {
     flex: 1,
@@ -169,7 +168,6 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 18,
-    backgroundColor: "#f59e0b",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 4,
@@ -180,15 +178,12 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 32,
     fontWeight: "800",
-    color: "#f1f5f9",
     letterSpacing: -0.5,
   },
   tagline: {
     fontSize: 15,
-    color: "#94a3b8",
   },
   card: {
-    backgroundColor: "#1e293b",
     borderRadius: 20,
     padding: 24,
     gap: 12,
@@ -196,30 +191,23 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#f1f5f9",
   },
   cardSubtitle: {
     fontSize: 14,
-    color: "#94a3b8",
     lineHeight: 20,
   },
   input: {
-    backgroundColor: "#0f172a",
     borderRadius: 12,
     borderWidth: 1.5,
-    borderColor: "#334155",
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 17,
-    color: "#f1f5f9",
     marginTop: 4,
   },
   errorText: {
     fontSize: 13,
-    color: "#f87171",
   },
   button: {
-    backgroundColor: "#f59e0b",
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: "center",
@@ -231,6 +219,5 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#0f172a",
   },
 });
