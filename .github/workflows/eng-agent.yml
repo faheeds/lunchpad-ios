@@ -1,0 +1,310 @@
+# Engineering Agent — LunchPad iOS app
+#
+# pick issue → make changes → typecheck + tests → Expo bundle export →
+# self-review → open PR → enable auto-merge if all green.
+#
+# Triggers:
+#   - issues: labeled with `agent-ready` → process that issue immediately
+#   - workflow_dispatch                  → manual kick, optional issue input
+#   - schedule (every 10 min)            → pick oldest open agent-ready issue
+#
+# Ported from the LunchPad web pipeline. Adapted for Expo: there is no
+# `next build`, so the build gate is `expo export` (a real JS bundle —
+# catches broken imports and Metro errors that tsc misses).
+#
+# Hardening carried over from the web pipeline:
+#   - the self-review step is continue-on-error so a crashed reviewer
+#     cannot skip verdict-posting + the auto-merge gate;
+#   - run-self-review.sh always writes a verdict (NEEDS_FIXES on failure);
+#   - a type-safety guard blocks auto-merge if the diff adds `as any` /
+#     `@ts-ignore` / `@ts-expect-error`;
+#   - auto-merge requires tsc + tests + bundle + guard + a real PASS.
+#
+# Stop the loop: remove `agent-ready` from pending issues, or disable
+# this workflow in the Actions UI.
+
+name: Engineering Agent
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number (optional — leave blank to pick oldest agent-ready)"
+        required: false
+        type: string
+  schedule:
+    - cron: '*/10 * * * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: agent-pipeline
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    if: |
+      github.event_name != 'issues'
+      || github.event.label.name == 'agent-ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Pick issue + lock it
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            ISSUE="${{ github.event.issue.number }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.issue_number }}" ]; then
+            ISSUE="${{ github.event.inputs.issue_number }}"
+          else
+            ISSUE=$(gh issue list \
+              --repo "${{ github.repository }}" \
+              --label "agent-ready" \
+              --state open \
+              --json number,createdAt \
+              --jq 'sort_by(.createdAt) | .[0].number // empty')
+          fi
+
+          if [ -z "$ISSUE" ]; then
+            echo "No agent-ready issue to process — exiting cleanly."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh issue edit "$ISSUE" \
+            --repo "${{ github.repository }}" \
+            --remove-label "agent-ready" || true
+
+          TITLE=$(gh issue view "$ISSUE" --repo "${{ github.repository }}" --json title --jq .title)
+          gh issue view "$ISSUE" --repo "${{ github.repository }}" --json body --jq .body > /tmp/issue-body.txt
+
+          echo "issue=$ISSUE"   >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE"   >> "$GITHUB_OUTPUT"
+          echo "skip=false"     >> "$GITHUB_OUTPUT"
+          echo "Picked issue #$ISSUE: $TITLE"
+
+      - name: Checkout
+        if: steps.pick.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.AGENT_PAT }}
+
+      - name: Setup Node
+        if: steps.pick.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        if: steps.pick.outputs.skip != 'true'
+        run: npm install --legacy-peer-deps
+
+      - name: Install Claude Code
+        if: steps.pick.outputs.skip != 'true'
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure git
+        if: steps.pick.outputs.skip != 'true'
+        run: |
+          git config user.name  "lunchpad-eng-agent"
+          git config user.email "eng-agent@lunchpad.us"
+
+      - name: Create branch
+        if: steps.pick.outputs.skip != 'true'
+        id: branch
+        run: |
+          BASE="agent/issue-${{ steps.pick.outputs.issue }}"
+          BRANCH="$BASE"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            BRANCH="$BASE-$(date +%s)"
+          fi
+          git checkout -b "$BRANCH"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Run engineering agent
+        if: steps.pick.outputs.skip != 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_TITLE: ${{ steps.pick.outputs.title }}
+          ISSUE_NUMBER: ${{ steps.pick.outputs.issue }}
+        run: |
+          export ISSUE_BODY="$(cat /tmp/issue-body.txt)"
+          bash scripts/agent/run-eng.sh
+
+      - name: Typecheck
+        if: steps.pick.outputs.skip != 'true'
+        id: tsc
+        run: |
+          npx tsc --noEmit 2>&1 | tee tsc.log
+          if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Run unit tests
+        if: steps.pick.outputs.skip != 'true'
+        id: tests
+        run: |
+          if grep -q '"test":' package.json; then
+            npm test --if-present 2>&1 | tee test.log
+            if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+              echo "result=fail" >> "$GITHUB_OUTPUT"
+            else
+              echo "result=pass" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "result=skip" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Bundle (expo export)
+        if: steps.pick.outputs.skip != 'true'
+        id: build
+        run: |
+          # Expo's analogue of `next build` — bundles the iOS JS, which
+          # surfaces broken imports and Metro errors that tsc cannot see.
+          # Output goes to /tmp so it never pollutes the PR diff.
+          if npx expo export --platform ios --output-dir /tmp/expo-export 2>&1 | tee build.log; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+          fi
+        continue-on-error: true
+
+      - name: Check diff
+        if: steps.pick.outputs.skip != 'true'
+        id: diff
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Agent produced no file changes — nothing to PR."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit + push
+        if: steps.pick.outputs.skip != 'true' && steps.diff.outputs.changed == 'true'
+        run: |
+          git add -A
+          git commit -m "Agent: ${{ steps.pick.outputs.title }} (closes #${{ steps.pick.outputs.issue }})"
+          git push -u origin "${{ steps.branch.outputs.name }}"
+
+      - name: Open PR
+        if: steps.pick.outputs.skip != 'true' && steps.diff.outputs.changed == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "${{ steps.branch.outputs.name }}" \
+            --title "[agent] ${{ steps.pick.outputs.title }}" \
+            --body "Closes #${{ steps.pick.outputs.issue }}.
+
+          Auto-generated by the iOS engineering agent.
+
+          **Self-verification:**
+          - TypeScript: ${{ steps.tsc.outputs.result }}
+          - Tests: ${{ steps.tests.outputs.result }}
+
+          Self-review verdict will be posted as a comment shortly.")
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "number=$(basename "$PR_URL")" >> "$GITHUB_OUTPUT"
+
+      - name: Guard - block type-safety escapes
+        if: steps.pick.outputs.skip != 'true' && steps.diff.outputs.changed == 'true'
+        id: guard
+        continue-on-error: true
+        run: |
+          ADDED=$(git diff origin/main...HEAD -- '*.ts' '*.tsx' \
+            | grep -E '^\+' | grep -vE '^\+\+\+' \
+            | grep -Ec 'as any|as unknown|@ts-ignore|@ts-expect-error' || true)
+          echo "New type-safety escapes introduced by this diff: ${ADDED:-0}"
+          if [ "${ADDED:-0}" -gt 0 ]; then
+            echo "result=fail" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Self-review the diff
+        if: steps.pick.outputs.skip != 'true' && steps.diff.outputs.changed == 'true'
+        id: review
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_TITLE:  ${{ steps.pick.outputs.title }}
+          TSC_RESULT:   ${{ steps.tsc.outputs.result }}
+          TESTS_RESULT: ${{ steps.tests.outputs.result }}
+        run: bash scripts/agent/run-self-review.sh
+
+      - name: Post review verdict
+        if: always() && steps.pick.outputs.skip != 'true' && steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          BODY="$(cat review-verdict.md 2>/dev/null || echo 'Self-review crashed — see workflow logs. Auto-merge withheld.')"
+          gh pr comment ${{ steps.pr.outputs.number }} --body "$BODY"
+
+      - name: Enable auto-merge if all green
+        if: always() && steps.pick.outputs.skip != 'true' && steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          TSC="${{ steps.tsc.outputs.result }}"
+          TESTS="${{ steps.tests.outputs.result }}"
+          BUILD="${{ steps.build.outputs.result }}"
+          GUARD="${{ steps.guard.outputs.result }}"
+          REVIEW_PASS="no"
+          if grep -q "^## Self-Review: PASS" review-verdict.md 2>/dev/null; then
+            REVIEW_PASS="yes"
+          fi
+
+          TESTS_OK="no"
+          if [ "$TESTS" = "pass" ] || [ "$TESTS" = "skip" ]; then
+            TESTS_OK="yes"
+          fi
+
+          echo "tsc=$TSC tests=$TESTS bundle=$BUILD guard=$GUARD review=$REVIEW_PASS"
+
+          if [ "$TSC" = "pass" ] && [ "$TESTS_OK" = "yes" ] && [ "$BUILD" = "pass" ] && [ "$GUARD" = "pass" ] && [ "$REVIEW_PASS" = "yes" ]; then
+            echo "All green — enabling auto-merge."
+            gh pr merge ${{ steps.pr.outputs.number }} --auto --squash
+          else
+            echo "Not all green — leaving PR for human review."
+          fi
+
+      - name: Flag type-safety escape on PR
+        if: always() && steps.guard.outputs.result == 'fail' && steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          gh pr comment ${{ steps.pr.outputs.number }} \
+            --body "Auto-merge withheld: this diff introduces \`as any\` / \`as unknown\` / \`@ts-ignore\` / \`@ts-expect-error\`. Those suppress type errors that \`tsc\` would otherwise catch. Please review the suppressed cast(s) before merging."
+
+      - name: Comment on issue
+        if: always() && steps.pick.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_PAT }}
+        run: |
+          if [ "${{ job.status }}" != "success" ]; then
+            gh issue comment ${{ steps.pick.outputs.issue }} \
+              --body "Agent run failed (see workflow logs). \`agent-ready\` already removed — re-apply to retry."
+          elif [ "${{ steps.diff.outputs.changed }}" = "true" ]; then
+            gh issue comment ${{ steps.pick.outputs.issue }} \
+              --body "Agent run complete — PR opened: ${{ steps.pr.outputs.url }}"
+          else
+            gh issue comment ${{ steps.pick.outputs.issue }} \
+              --body "Agent ran but produced no file changes. \`agent-ready\` already removed — re-apply to retry, or close the issue."
+          fi
