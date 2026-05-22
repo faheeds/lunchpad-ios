@@ -108,8 +108,6 @@ export default function CartScreen() {
         ),
       });
 
-      clearCart();
-
       // Open Stripe inside the app via SFSafariViewController, not in
       // an external Safari tab. openAuthSessionAsync returns when the
       // browser session ends — either because Stripe redirected to our
@@ -131,13 +129,12 @@ export default function CartScreen() {
         if (url.includes("/checkout/success")) {
           router.replace({ pathname: "/checkout/success", params: { orderId } });
         } else if (url.includes("/checkout/cancel")) {
-          // Customer cancelled — silently bring them back to cart;
-          // their items were already cleared at the top of this
-          // function so we just sit idle.
+          // Customer cancelled — silently bring them back to cart.
+          // Cart is still populated so they can review and retry.
         }
       }
       // If type is "cancel" or "dismiss" the user closed the sheet
-      // before completing payment. No-op; cart is already cleared.
+      // before completing payment. Cart remains intact for retry.
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Checkout failed.");
     } finally {
