@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
   },
   sectionTitle: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  sectionCount: { fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4 },
+  sectionCount: { fontSize: 13, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4 },
 
   // Item card — denser layout: smaller image, name & price on one row,
   // description + tags below. Halves the card height vs. the earlier design.
@@ -465,16 +465,16 @@ const modalStyles = StyleSheet.create({
   description: { fontSize: 15, lineHeight: 22 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100, borderWidth: 1 },
-  chipText: { fontSize: 12, fontWeight: "600" },
+  chipText: { fontSize: 13, fontWeight: "600" },
   section: { gap: 8, marginTop: 6 },
-  sectionLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  sectionLabel: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
   optionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 4,
   },
   optionName: { fontSize: 13 },
-  optionPrice: { fontSize: 12 },
+  optionPrice: { fontSize: 13 },
   footer: { paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
   orderButton: {
     borderRadius: 14,

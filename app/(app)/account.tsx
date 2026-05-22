@@ -110,19 +110,17 @@ export default function AccountScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
-      <SafeAreaView>
-        <View style={styles.header}>
-          <Text
-            style={[styles.headerTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
-          >
-            Account
+      <SafeAreaView style={styles.header}>
+        <Text
+          style={[styles.headerTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+        >
+          Account
+        </Text>
+        {theme.restaurant && (
+          <Text style={{ fontSize: 13, color: theme.textMuted, marginTop: 2 }}>
+            Signed in to {theme.restaurant.name}
           </Text>
-          {theme.restaurant && (
-            <Text style={{ fontSize: 12, color: theme.textMuted, marginTop: 2 }}>
-              Signed in to {theme.restaurant.name}
-            </Text>
-          )}
-        </View>
+        )}
       </SafeAreaView>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -402,7 +400,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 12,
   },
   headerTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5 },
@@ -475,7 +472,7 @@ const styles = StyleSheet.create({
   addChildForm: { gap: 10, borderTopWidth: 1, paddingTop: 12 },
   addChildTitle: { fontSize: 14, fontWeight: "600" },
   schoolPickerWrapper: { gap: 6 },
-  schoolPickerLabel: { fontSize: 12, fontWeight: "600" },
+  schoolPickerLabel: { fontSize: 13, fontWeight: "600" },
   schoolChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   schoolChip: {
     paddingHorizontal: 12,
@@ -516,8 +513,8 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3, textTransform: "uppercase" },
   orderItems: { fontSize: 14, fontWeight: "600", lineHeight: 19 },
-  orderMeta: { fontSize: 11, fontWeight: "500" },
-  orderRef: { fontSize: 11, fontFamily: "Menlo" },
+  orderMeta: { fontSize: 13, fontWeight: "500" },
+  orderRef: { fontSize: 13, fontFamily: "Menlo" },
   orderTotal: { fontSize: 15, fontWeight: "800" },
   changeSchoolBtn: {
     flexDirection: "row",

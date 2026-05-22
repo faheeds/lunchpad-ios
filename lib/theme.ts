@@ -46,6 +46,22 @@ export type RestaurantBrand = {
  * guaranteed non-null; falls back to neutral defaults when the active
  * restaurant has a field unset.
  */
+export type TypographyScale = {
+  /** Label sizes — for badges, small labels, uppercase section headers. Scales with system. */
+  labelSmall: { fontSize: number; lineHeight: number };
+  labelRegular: { fontSize: number; lineHeight: number };
+
+  /** Body sizes — for body copy, list items. Scales with system. */
+  bodySmall: { fontSize: number; lineHeight: number };
+  body: { fontSize: number; lineHeight: number };
+  bodyLarge: { fontSize: number; lineHeight: number };
+
+  /** Display sizes — for section titles, modals, large headings. */
+  displaySmall: { fontSize: number; lineHeight: number };
+  display: { fontSize: number; lineHeight: number };
+  displayLarge: { fontSize: number; lineHeight: number };
+};
+
 export type Theme = {
   /** The restaurant being displayed (or null when neutral mode). */
   restaurant: RestaurantBrand | null;
@@ -78,6 +94,12 @@ export type Theme = {
   fontDisplay: string;   // Fraunces serif for editorial wordmark
   fontBody: string;      // System — paragraphs, labels
 
+  // Typography scale — responsive sizes that respect iOS Dynamic Type.
+  // All values auto-scale when the system text size changes. Use instead of
+  // hardcoded fontSize values in StyleSheet.create(). e.g., use
+  // `theme.type.body.fontSize` instead of `fontSize: 15`.
+  type: TypographyScale;
+
   // Logos / heroes (URLs may be null even after resolution if tenant didn't upload one)
   logoUrl: string | null;
   heroImageUrl: string | null;
@@ -87,6 +109,17 @@ export type Theme = {
 // Editorial light theme: warm cream background, deep green primary, clay accent,
 // Used when no tenant is connected (e.g. the school code entry screen before
 // validation) OR as a fallback when a tenant has a brand field unset.
+
+const NEUTRAL_TYPE_SCALE: TypographyScale = {
+  labelSmall: { fontSize: 13, lineHeight: 14 },
+  labelRegular: { fontSize: 13, lineHeight: 16 },
+  bodySmall: { fontSize: 13, lineHeight: 18 },
+  body: { fontSize: 15, lineHeight: 21 },
+  bodyLarge: { fontSize: 16, lineHeight: 23 },
+  displaySmall: { fontSize: 18, lineHeight: 22 },
+  display: { fontSize: 22, lineHeight: 26 },
+  displayLarge: { fontSize: 28, lineHeight: 32 },
+};
 
 const NEUTRAL_THEME: Theme = {
   restaurant: null,
@@ -112,6 +145,8 @@ const NEUTRAL_THEME: Theme = {
   // Fraunces for display (serif), System for body
   fontDisplay: "Fraunces_800ExtraBold",
   fontBody: "System",
+
+  type: NEUTRAL_TYPE_SCALE,
 
   logoUrl: null,
   heroImageUrl: null,
@@ -164,6 +199,8 @@ export function buildTheme(brand: RestaurantBrand | null): Theme {
     // restaurant's web font by bundling the matching .ttf.
     fontDisplay: NEUTRAL_THEME.fontDisplay,
     fontBody: NEUTRAL_THEME.fontBody,
+
+    type: NEUTRAL_TYPE_SCALE,
 
     logoUrl: brand.logoUrl,
     heroImageUrl: brand.heroImageUrl,

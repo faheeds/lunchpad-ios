@@ -599,7 +599,7 @@ const styles = (theme: any) => StyleSheet.create({
   },
   menuInfo: { flex: 1, padding: 12, gap: 3 },
   menuName: { fontSize: 15, fontWeight: "700" },
-  menuDesc: { fontSize: 12, lineHeight: 16 },
+  menuDesc: { fontSize: 13, lineHeight: 16 },
   menuPrice: { fontSize: 14, fontWeight: "600", marginTop: 2 },
   soldOutBadge: {
     marginRight: 14,
@@ -608,7 +608,7 @@ const styles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  soldOutText: { fontSize: 11, fontWeight: "600" },
+  soldOutText: { fontSize: 13, fontWeight: "600" },
   inCartBadge: { marginRight: 14 },
   addIcon: { marginRight: 14 },
   cartBarWrapper: {
@@ -634,7 +634,7 @@ const styles = (theme: any) => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cartBadgeText: { fontSize: 12, fontWeight: "800" },
+  cartBadgeText: { fontSize: 13, fontWeight: "800" },
   cartBarText: { flex: 1, fontSize: 16, fontWeight: "700" },
   cartBarPrice: { fontSize: 16, fontWeight: "700" },
 });
@@ -699,7 +699,7 @@ const modalStyles = (theme: any) => StyleSheet.create({
   },
   requiredMark: {
     color: theme.accent,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     textTransform: "none",
     letterSpacing: 0,

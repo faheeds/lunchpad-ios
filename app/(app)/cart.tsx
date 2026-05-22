@@ -158,17 +158,15 @@ export default function CartScreen() {
 
   return (
     <View style={[screenStyles.container, { backgroundColor: theme.dark }]}>
-      <SafeAreaView>
-        <View style={screenStyles.header}>
-          <Text
-            style={[screenStyles.headerTitle, { color: theme.textPrimary }]}
-          >
-            Your cart
-          </Text>
-          <Text style={[screenStyles.headerSub, { color: theme.textMuted }]}>
-            {unitCount} item{unitCount !== 1 ? "s" : ""}
-          </Text>
-        </View>
+      <SafeAreaView style={screenStyles.header}>
+        <Text
+          style={[screenStyles.headerTitle, { color: theme.textPrimary }]}
+        >
+          Your cart
+        </Text>
+        <Text style={[screenStyles.headerSub, { color: theme.textMuted }]}>
+          {unitCount} item{unitCount !== 1 ? "s" : ""}
+        </Text>
       </SafeAreaView>
 
       <ScrollView contentContainerStyle={screenStyles.scroll}>
@@ -427,7 +425,6 @@ const styles = (theme: any) => StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 12,
   },
   headerTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5, fontFamily: theme.fontDisplay },
@@ -461,14 +458,14 @@ const styles = (theme: any) => StyleSheet.create({
     fontWeight: "400",
     color: theme.textSecondary,
   },
-  cartItemMods: { fontSize: 12, color: theme.textSecondary },
+  cartItemMods: { fontSize: 13, color: theme.textSecondary },
   cartItemChoice: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
     color: theme.textSecondary,
   },
   cartItemPrice: { fontSize: 14, fontWeight: "600", color: theme.primary, marginTop: 2 },
-  cartItemPriceUnit: { fontSize: 11, fontWeight: "500", color: theme.textSecondary },
+  cartItemPriceUnit: { fontSize: 13, fontWeight: "500", color: theme.textSecondary },
   removeBtn: { padding: 4 },
   qtyControl: {
     flexDirection: "row",
@@ -516,7 +513,7 @@ const styles = (theme: any) => StyleSheet.create({
   selectedChildGrade: { fontSize: 13, color: theme.textSecondary },
   selectedChildAllergy: { fontSize: 13, color: theme.warning },
   fieldContainer: { gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: "600", color: theme.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
+  fieldLabel: { fontSize: 13, fontWeight: "600", color: theme.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
   input: {
     backgroundColor: theme.dark,
     borderRadius: 10,

@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "800",
     letterSpacing: 0.3,
     textTransform: "uppercase",
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   orderRef: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     fontFamily: "Menlo",
   },

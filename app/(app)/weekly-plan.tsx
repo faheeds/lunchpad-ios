@@ -401,13 +401,17 @@ export default function WeeklyPlanScreen() {
             weekdaySlots.find((s) => s.weekday.num === pickerOpen.weekday)?.date ?? null
           }
           onClose={() => setPickerOpen(null)}
-          onPick={(item) => {
+          onPick={(item, size, choice, additions, removals) => {
             const open = pickerOpen;
             setPickerOpen(null);
             upsertMutation.mutate({
               parentChildId: open.childId,
               weekday: open.weekday,
               menuItemId: item.id,
+              size,
+              choice,
+              additions,
+              removals,
             });
           }}
         />
@@ -425,66 +429,316 @@ function ItemPickerModal({
 }: {
   deliveryDate: WeeklyDeliveryDate | null;
   onClose: () => void;
-  onPick: (item: MenuItem) => void;
+  onPick: (item: MenuItem, size?: string, choice?: string, additions?: string[], removals?: string[]) => void;
 }) {
   const theme = useTheme();
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
+  const [selectedAdditions, setSelectedAdditions] = useState<string[]>([]);
+  const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
+
   if (!deliveryDate) return null;
+  if (!selectedItem) {
+    return (
+      <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+        <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
+          <View style={modalStyles.handleRow}>
+            <Text
+              style={[
+                modalStyles.title,
+                { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+              ]}
+            >
+              Pick a meal
+            </Text>
+            <TouchableOpacity onPress={onClose} accessibilityLabel="Close picker">
+              <Ionicons name="close" size={24} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={modalStyles.list}>
+            {deliveryDate!.menuItems.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => {
+                  setSelectedItem(item);
+                  setSelectedSize(item.sizes?.[0]?.name ?? null);
+                  setSelectedChoice(null);
+                  setSelectedAdditions([]);
+                  setSelectedRemovals([]);
+                }}
+                style={[modalStyles.itemCard, { backgroundColor: theme.surface }]}
+                activeOpacity={0.8}
+                accessibilityLabel={`Select ${item.name}`}
+                accessibilityRole="button"
+              >
+                {item.imageUrl ? (
+                  <Image source={{ uri: item.imageUrl }} style={modalStyles.itemImage} />
+                ) : (
+                  <View
+                    style={[
+                      modalStyles.itemImage,
+                      { backgroundColor: theme.dark, alignItems: "center", justifyContent: "center" },
+                    ]}
+                  >
+                    <Text style={{ fontSize: 28 }}>🍽️</Text>
+                  </View>
+                )}
+                <View style={modalStyles.itemBody}>
+                  <Text style={[modalStyles.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  {item.description && (
+                    <Text
+                      style={[modalStyles.itemDesc, { color: theme.textSecondary }]}
+                      numberOfLines={2}
+                    >
+                      {item.description}
+                    </Text>
+                  )}
+                  <Text style={[modalStyles.itemPrice, { color: theme.primary }]}>
+                    {formatPrice(item.basePriceCents)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
+    );
+  }
+
+  // Customization screen for selected item
+  const sizes = selectedItem.sizes ?? [];
+  const requiredChoices = selectedItem.requiredChoices ?? [];
+  const hasSize = sizes.length > 0;
+  const hasRequiredChoice = requiredChoices.length > 0;
+
+  const additions = selectedItem.options.filter((o) => o.optionType === "ADD_ON" || o.optionType === "ADD");
+  const removals = selectedItem.options.filter((o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE");
+
+  const extraCents = additions
+    .filter((o) => selectedAdditions.includes(o.name))
+    .reduce((s, o) => s + o.priceDeltaCents, 0);
+
+  const resolvedBaseCents = hasSize
+    ? (sizes.find((s) => s.name === selectedSize) ?? sizes[0]).priceCents
+    : selectedItem.basePriceCents;
+  const totalCents = resolvedBaseCents + extraCents;
+
+  const canConfirm = (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
+
+  function toggleAddition(name: string) {
+    setSelectedAdditions((prev) =>
+      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]
+    );
+  }
+
+  function toggleRemoval(name: string) {
+    setSelectedRemovals((prev) =>
+      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]
+    );
+  }
+
+  function pickChoice(name: string) {
+    setSelectedChoice((prev) => (prev === name ? null : name));
+    Haptics.selectionAsync().catch(() => {});
+  }
+
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
         <View style={modalStyles.handleRow}>
+          <TouchableOpacity onPress={() => setSelectedItem(null)} accessibilityLabel="Back to item list">
+            <Ionicons name="chevron-back" size={24} color={theme.textSecondary} />
+          </TouchableOpacity>
           <Text
             style={[
               modalStyles.title,
               { color: theme.textPrimary, fontFamily: theme.fontDisplay },
             ]}
           >
-            Pick a meal
+            Customize
           </Text>
           <TouchableOpacity onPress={onClose} accessibilityLabel="Close picker">
             <Ionicons name="close" size={24} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={modalStyles.list}>
-          {deliveryDate.menuItems.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              onPress={() => onPick(item)}
-              style={[modalStyles.itemCard, { backgroundColor: theme.surface }]}
-              activeOpacity={0.8}
-            >
-              {item.imageUrl ? (
-                <Image source={{ uri: item.imageUrl }} style={modalStyles.itemImage} />
-              ) : (
-                <View
-                  style={[
-                    modalStyles.itemImage,
-                    { backgroundColor: theme.dark, alignItems: "center", justifyContent: "center" },
-                  ]}
-                >
-                  <Text style={{ fontSize: 28 }}>🍽️</Text>
-                </View>
-              )}
-              <View style={modalStyles.itemBody}>
-                <Text style={[modalStyles.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
-                  {item.name}
-                </Text>
-                {item.description && (
-                  <Text
-                    style={[modalStyles.itemDesc, { color: theme.textSecondary }]}
-                    numberOfLines={2}
-                  >
-                    {item.description}
-                  </Text>
-                )}
-                <Text style={[modalStyles.itemPrice, { color: theme.primary }]}>
-                  {formatPrice(item.basePriceCents)}
-                </Text>
+        <ScrollView contentContainerStyle={modalStyles.custScroll}>
+          <View style={[modalStyles.custHeader, { backgroundColor: theme.surface }]}>
+            <Text style={[modalStyles.custItemName, { color: theme.textPrimary }]}>
+              {selectedItem.name}
+            </Text>
+            <Text style={[modalStyles.custItemPrice, { color: theme.primary }]}>
+              {formatPrice(totalCents)}
+            </Text>
+          </View>
+
+          {hasSize && (
+            <View style={modalStyles.custSection}>
+              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
+                Size <Text style={{ color: theme.accent, fontSize: 13, fontWeight: "700" }}>· required</Text>
+              </Text>
+              <View style={modalStyles.custChoiceGrid}>
+                {sizes.map((sz) => {
+                  const isSelected = selectedSize === sz.name;
+                  return (
+                    <TouchableOpacity
+                      key={sz.id}
+                      onPress={() => {
+                        setSelectedSize(sz.name);
+                        Haptics.selectionAsync().catch(() => {});
+                      }}
+                      style={[
+                        modalStyles.custChoiceChip,
+                        {
+                          backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
+                          borderColor: isSelected ? theme.primary : theme.border,
+                        },
+                      ]}
+                      accessibilityLabel={`${sz.name}, ${formatPrice(sz.priceCents)}`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
+                    >
+                      <Text style={[modalStyles.custChoiceText, { color: isSelected ? theme.textOnPrimary : theme.textPrimary }]}>
+                        {sz.name}
+                      </Text>
+                      <Text style={[modalStyles.custSizePrice, { color: isSelected ? theme.textOnPrimary : theme.textSecondary }]}>
+                        {formatPrice(sz.priceCents)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            </TouchableOpacity>
-          ))}
+            </View>
+          )}
+
+          {hasRequiredChoice && (
+            <View style={modalStyles.custSection}>
+              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
+                Pick one <Text style={{ color: theme.accent, fontSize: 13, fontWeight: "700" }}>· required</Text>
+              </Text>
+              <View style={modalStyles.custChoiceGrid}>
+                {requiredChoices.map((name) => {
+                  const isSelected = selectedChoice === name;
+                  return (
+                    <TouchableOpacity
+                      key={name}
+                      onPress={() => pickChoice(name)}
+                      style={[
+                        modalStyles.custChoiceChip,
+                        {
+                          backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
+                          borderColor: isSelected ? theme.primary : theme.border,
+                        },
+                      ]}
+                      accessibilityLabel={name}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: isSelected }}
+                    >
+                      <Text style={[modalStyles.custChoiceText, { color: isSelected ? theme.textOnPrimary : theme.textPrimary }]}>
+                        {name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {additions.length > 0 && (
+            <View style={modalStyles.custSection}>
+              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
+                Add-ons
+              </Text>
+              {additions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  onPress={() => toggleAddition(opt.name)}
+                  style={modalStyles.custOptionRow}
+                  accessibilityLabel={opt.name}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selectedAdditions.includes(opt.name) }}
+                >
+                  <View style={[
+                    modalStyles.checkbox,
+                    selectedAdditions.includes(opt.name) && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}>
+                    {selectedAdditions.includes(opt.name) && (
+                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
+                    )}
+                  </View>
+                  <Text style={[modalStyles.custOptionName, { color: theme.textPrimary }]}>{opt.name}</Text>
+                  {opt.priceDeltaCents > 0 && (
+                    <Text style={[modalStyles.custOptionPrice, { color: theme.textSecondary }]}>
+                      +{formatPrice(opt.priceDeltaCents)}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {removals.length > 0 && (
+            <View style={modalStyles.custSection}>
+              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
+                Remove
+              </Text>
+              {removals.map((opt) => (
+                <TouchableOpacity
+                  key={opt.id}
+                  onPress={() => toggleRemoval(opt.name)}
+                  style={modalStyles.custOptionRow}
+                  accessibilityLabel={opt.name}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selectedRemovals.includes(opt.name) }}
+                >
+                  <View style={[
+                    modalStyles.checkbox,
+                    selectedRemovals.includes(opt.name) && { backgroundColor: theme.primary, borderColor: theme.primary },
+                  ]}>
+                    {selectedRemovals.includes(opt.name) && (
+                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
+                    )}
+                  </View>
+                  <Text style={[modalStyles.custOptionName, { color: theme.textPrimary }]}>{opt.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </ScrollView>
+
+        <SafeAreaView style={[modalStyles.custFooter, { backgroundColor: theme.dark, borderTopColor: theme.surface }]}>
+          <TouchableOpacity
+            style={[
+              modalStyles.confirmBtn,
+              {
+                backgroundColor: canConfirm ? theme.primary : theme.surfaceElevated,
+                opacity: canConfirm ? 1 : 0.7,
+              },
+            ]}
+            onPress={() => onPick(selectedItem, selectedSize ?? undefined, selectedChoice ?? undefined, selectedAdditions, selectedRemovals)}
+            disabled={!canConfirm}
+            accessibilityRole="button"
+            accessibilityLabel={!canConfirm
+              ? "Pick required options above"
+              : `Confirm, ${formatPrice(totalCents)}`}
+            accessibilityState={{ disabled: !canConfirm }}
+          >
+            <Text
+              style={[
+                modalStyles.confirmText,
+                { color: canConfirm ? theme.textOnPrimary : theme.textMuted },
+              ]}
+            >
+              {!canConfirm
+                ? "Pick required options above"
+                : `Confirm — ${formatPrice(totalCents)}`}
+            </Text>
+          </TouchableOpacity>
+        </SafeAreaView>
       </View>
     </Modal>
   );
@@ -579,7 +833,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   footerLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -617,4 +871,23 @@ const modalStyles = StyleSheet.create({
   itemName: { fontSize: 15, fontWeight: "700" },
   itemDesc: { fontSize: 13, lineHeight: 18 },
   itemPrice: { fontSize: 15, fontWeight: "700", marginTop: 2 },
+
+  // Customization screen styles
+  custScroll: { paddingHorizontal: 16, paddingBottom: 100, gap: 16 },
+  custHeader: { borderRadius: 14, padding: 16, gap: 8, marginTop: 12 },
+  custItemName: { fontSize: 18, fontWeight: "700" },
+  custItemPrice: { fontSize: 20, fontWeight: "700", marginTop: 4 },
+  custSection: { gap: 8 },
+  custSectionTitle: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+  custChoiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  custChoiceChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1.5, flexDirection: "row", alignItems: "center", gap: 8 },
+  custChoiceText: { fontSize: 15, fontWeight: "600" },
+  custSizePrice: { fontSize: 13, fontWeight: "500" },
+  custOptionRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  custOptionName: { flex: 1, fontSize: 15 },
+  custOptionPrice: { fontSize: 14 },
+  custFooter: { paddingHorizontal: 20, paddingBottom: 8, borderTopWidth: 1 },
+  confirmBtn: { borderRadius: 14, paddingVertical: 15, alignItems: "center" },
+  confirmText: { fontSize: 17, fontWeight: "700" },
 });
