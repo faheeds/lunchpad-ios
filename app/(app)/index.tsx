@@ -14,7 +14,7 @@ import {
   Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates } from "../../lib/api";
 import type { DeliveryDateWithMenu } from "../../lib/types";
@@ -88,6 +88,7 @@ function DeliveryDateCard({
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const { preselectedItemId } = useLocalSearchParams<{ preselectedItemId?: string }>();
   const restaurantName = theme.restaurant?.name;
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["delivery-dates"],
@@ -224,12 +225,16 @@ export default function HomeScreen() {
           renderItem={({ item }) => (
             <DeliveryDateCard
               item={item}
-              onPress={() =>
+              onPress={() => {
+                const params: Record<string, string> = { dateId: item.id };
+                if (preselectedItemId) {
+                  params.preselectedItemId = preselectedItemId;
+                }
                 router.push({
                   pathname: "/(app)/order/[dateId]",
-                  params: { dateId: item.id },
-                })
-              }
+                  params,
+                });
+              }}
             />
           )}
           refreshControl={
