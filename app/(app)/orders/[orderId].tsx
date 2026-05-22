@@ -285,6 +285,8 @@ export default function OrderDetail() {
                 style={[styles.actionBtn, { backgroundColor: theme.primary }]}
                 onPress={handleModify}
                 disabled={isModifying}
+                accessibilityRole="button"
+                accessibilityLabel="Modify order"
               >
                 {isModifying ? (
                   <ActivityIndicator color={theme.textOnPrimary} />
@@ -300,6 +302,8 @@ export default function OrderDetail() {
                 style={[styles.actionBtn, { backgroundColor: theme.danger + "22", borderWidth: 1, borderColor: theme.danger }]}
                 onPress={handleCancel}
                 disabled={isCancelling}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel order"
               >
                 {isCancelling ? (
                   <ActivityIndicator color={theme.danger} />
@@ -314,6 +318,8 @@ export default function OrderDetail() {
               <TouchableOpacity
                 style={[styles.contactBtn, { backgroundColor: theme.dark }]}
                 onPress={() => Linking.openURL(`mailto:${contactEmail}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Email ${theme.restaurant?.name || "the restaurant"}`}
               >
                 <Ionicons name="mail-outline" size={16} color={theme.textSecondary} />
                 <Text style={[styles.contactBtnText, { color: theme.textSecondary }]}>
@@ -333,6 +339,8 @@ export default function OrderDetail() {
               <TouchableOpacity
                 style={[styles.contactBtn, { backgroundColor: theme.dark }]}
                 onPress={() => Linking.openURL(`mailto:${contactEmail}`)}
+                accessibilityRole="button"
+                accessibilityLabel={`Email ${theme.restaurant?.name || "the restaurant"}`}
               >
                 <Ionicons name="mail-outline" size={16} color={theme.textSecondary} />
                 <Text style={[styles.contactBtnText, { color: theme.textSecondary }]}>
