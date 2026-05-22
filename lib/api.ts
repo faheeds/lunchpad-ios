@@ -183,6 +183,7 @@ export const upsertWeeklyPlan = (data: {
   weekday: number;
   menuItemId: string;
   choice?: string;
+  size?: string;
   additions?: string[];
   removals?: string[];
 }) => apiPost<WeeklyPlan>("/api/mobile/native/weekly-plans", data);

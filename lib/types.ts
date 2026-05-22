@@ -162,6 +162,7 @@ export type WeeklyPlan = {
   menuItemId: string;
   menuItemName: string;
   choice: string | null;
+  size: string | null;
   additions: string[];
   removals: string[];
   isActive: boolean;

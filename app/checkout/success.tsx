@@ -8,8 +8,8 @@
  *   - Two CTAs: primary "Back to menu", secondary "View order"
  */
 
-import { useEffect } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Linking } from "react-native";
+import { useEffect, useRef } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Linking, Animated } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -24,25 +24,47 @@ export default function CheckoutSuccess() {
   const supportEmail = theme.restaurant?.contactEmail;
   const clearCart = useCart((s) => s.clearCart);
 
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
   // Success haptic on mount — feels like the receipt printing.
   // Clear cart only after payment is confirmed.
+  // Animate the checkmark entrance with a subtle spring.
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     clearCart();
-  }, [clearCart]);
+    Animated.parallel([
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [clearCart, scaleAnim, opacityAnim]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.dark }]}>
       <View style={styles.inner}>
-        {/* Success badge: themed circle with check icon */}
-        <View
+        {/* Success badge: themed circle with check icon, animates in on mount */}
+        <Animated.View
           style={[
             styles.checkCircle,
-            { backgroundColor: `${theme.success}22`, borderColor: theme.success },
+            {
+              backgroundColor: `${theme.success}22`,
+              borderColor: theme.success,
+              opacity: opacityAnim,
+              transform: [{ scale: scaleAnim }],
+            },
           ]}
         >
           <Ionicons name="checkmark" size={48} color={theme.success} />
-        </View>
+        </Animated.View>
 
         <Text
           style={[styles.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
@@ -162,7 +184,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   refLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,

@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  SafeAreaView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -152,7 +153,7 @@ export default function HomeScreen() {
           </View>
         </View>
       ) : (
-        <View style={styles.header}>
+        <SafeAreaView style={styles.header}>
           <View style={styles.brandRow}>
             <BrandMark size={28} radius={7} />
             <Text
@@ -173,7 +174,7 @@ export default function HomeScreen() {
           <Text style={[styles.headerSub, { color: theme.textMuted }]}>
             {dates.length} date{dates.length !== 1 ? "s" : ""} open for ordering
           </Text>
-        </View>
+        </SafeAreaView>
       )}
 
       {dates.length === 0 ? (
@@ -262,7 +263,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 16,
   },
   heroWrap: {
@@ -335,7 +335,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   planCtaTitle: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
-  planCtaSub: { fontSize: 12, marginTop: 2 },
+  planCtaSub: { fontSize: 13, marginTop: 2 },
   card: {
     borderRadius: 16,
     padding: 16,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     gap: 1,
   },
   dateDay: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.5,
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
     lineHeight: 28,
   },
   dateMon: {
-    fontSize: 11,
+    fontSize: 13,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   cutoff: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "500",
     marginTop: 2,
   },

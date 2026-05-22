@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   privacyNote: {
-    fontSize: 12,
+    fontSize: 13,
     textAlign: "center",
     paddingHorizontal: 24,
   },
