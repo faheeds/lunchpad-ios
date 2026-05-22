@@ -172,80 +172,81 @@ export default function AccountScreen() {
 
         {/* Children section */}
         {account && (
-          <View style={styles.section}>
+          <View style={[styles.section, { backgroundColor: theme.surface }]}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Saved children</Text>
+              <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Saved children</Text>
               <TouchableOpacity onPress={() => setShowAddChild((v) => !v)}>
                 <Ionicons
                   name={showAddChild ? "chevron-up" : "add-circle-outline"}
                   size={22}
-                  color="#f59e0b"
+                  color={theme.accent}
                 />
               </TouchableOpacity>
             </View>
 
             {account.children.length === 0 && !showAddChild && (
-              <Text style={styles.emptyText}>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                 No saved children yet. Add one to speed up checkout.
               </Text>
             )}
 
             {account.children.map((child) => (
-              <View key={child.id} style={styles.childCard}>
-                <View style={styles.childAvatar}>
-                  <Text style={styles.childAvatarText}>
+              <View key={child.id} style={[styles.childCard, { borderBottomColor: theme.border }]}>
+                <View style={[styles.childAvatar, { backgroundColor: theme.dark }]}>
+                  <Text style={[styles.childAvatarText, { color: theme.primary }]}>
                     {child.studentName[0].toUpperCase()}
                   </Text>
                 </View>
                 <View style={styles.childInfo}>
-                  <Text style={styles.childName}>{child.studentName}</Text>
-                  <Text style={styles.childDetail}>
+                  <Text style={[styles.childName, { color: theme.textPrimary }]}>{child.studentName}</Text>
+                  <Text style={[styles.childDetail, { color: theme.textSecondary }]}>
                     Grade {child.grade} · {child.schoolName}
                   </Text>
                   {child.allergyNotes && (
-                    <Text style={styles.childAllergy}>⚠️ {child.allergyNotes}</Text>
+                    <Text style={[styles.childAllergy, { color: theme.warning }]}>⚠️ {child.allergyNotes}</Text>
                   )}
                 </View>
               </View>
             ))}
 
             {showAddChild && (
-              <View style={styles.addChildForm}>
-                <Text style={styles.addChildTitle}>Add child</Text>
+              <View style={[styles.addChildForm, { borderTopColor: theme.border }]}>
+                <Text style={[styles.addChildTitle, { color: theme.textSecondary }]}>Add child</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: theme.dark, borderColor: theme.border, color: theme.textPrimary }]}
                   value={childName}
                   onChangeText={setChildName}
                   placeholder="Student name"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={theme.textMuted}
                   autoCapitalize="words"
                 />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: theme.dark, borderColor: theme.border, color: theme.textPrimary }]}
                   value={childGrade}
                   onChangeText={setChildGrade}
                   placeholder="Grade (e.g. 3rd)"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={theme.textMuted}
                 />
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: theme.dark, borderColor: theme.border, color: theme.textPrimary }]}
                   value={childAllergy}
                   onChangeText={setChildAllergy}
                   placeholder="Allergy notes (optional)"
-                  placeholderTextColor="#475569"
+                  placeholderTextColor={theme.textMuted}
                 />
                 <TouchableOpacity
                   style={[
                     styles.addChildBtn,
+                    { backgroundColor: theme.primary },
                     (!childName.trim() || !childGrade.trim()) && styles.addChildBtnDisabled,
                   ]}
                   onPress={() => addChildMutation.mutate()}
                   disabled={!childName.trim() || !childGrade.trim() || addChildMutation.isPending}
                 >
                   {addChildMutation.isPending ? (
-                    <ActivityIndicator color="#0f172a" />
+                    <ActivityIndicator color={theme.textOnPrimary} />
                   ) : (
-                    <Text style={styles.addChildBtnText}>Save child</Text>
+                    <Text style={[styles.addChildBtnText, { color: theme.textOnPrimary }]}>Save child</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -288,7 +289,7 @@ export default function AccountScreen() {
                     key={order.id}
                     style={[
                       styles.orderCard,
-                      { backgroundColor: theme.dark, borderColor: theme.surface },
+                      { backgroundColor: theme.surface, borderColor: theme.border },
                     ]}
                   >
                     {/* Header row: status pill + total */}
@@ -347,16 +348,15 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 12,
   },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: "#f1f5f9", letterSpacing: -0.5 },
+  headerTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5 },
   scroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 16 },
   section: {
-    backgroundColor: "#1e293b",
     borderRadius: 16,
     padding: 16,
     gap: 12,
@@ -369,7 +369,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -378,74 +377,66 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: "#f59e0b",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 22, fontWeight: "700", color: "#0f172a" },
+  avatarText: { fontSize: 22, fontWeight: "700" },
   profileInfo: { flex: 1, gap: 2 },
-  profileName: { fontSize: 17, fontWeight: "700", color: "#f1f5f9" },
-  profileEmail: { fontSize: 13, color: "#64748b" },
+  profileName: { fontSize: 17, fontWeight: "700" },
+  profileEmail: { fontSize: 13 },
   signOutBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingVertical: 8,
   },
-  signOutText: { fontSize: 14, color: "#f87171", fontWeight: "500" },
+  signOutText: { fontSize: 14, fontWeight: "500" },
   guestBox: { gap: 8 },
-  guestTitle: { fontSize: 16, fontWeight: "700", color: "#f1f5f9" },
-  guestSub: { fontSize: 13, color: "#64748b", lineHeight: 18 },
+  guestTitle: { fontSize: 16, fontWeight: "700" },
+  guestSub: { fontSize: 15, lineHeight: 20 },
   signInBtn: {
-    backgroundColor: "#f59e0b",
     borderRadius: 10,
     paddingVertical: 11,
     alignItems: "center",
     marginTop: 4,
   },
-  signInText: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
-  emptyText: { fontSize: 13, color: "#475569" },
+  signInText: { fontSize: 15, fontWeight: "700" },
+  emptyText: { fontSize: 15, lineHeight: 20 },
   childCard: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#0f172a",
   },
   childAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
   },
-  childAvatarText: { fontSize: 16, fontWeight: "700", color: "#f59e0b" },
+  childAvatarText: { fontSize: 16, fontWeight: "700" },
   childInfo: { flex: 1, gap: 2 },
-  childName: { fontSize: 15, fontWeight: "600", color: "#f1f5f9" },
-  childDetail: { fontSize: 12, color: "#64748b" },
-  childAllergy: { fontSize: 12, color: "#fbbf24" },
-  addChildForm: { gap: 10, borderTopWidth: 1, borderTopColor: "#0f172a", paddingTop: 12 },
-  addChildTitle: { fontSize: 14, fontWeight: "600", color: "#94a3b8" },
+  childName: { fontSize: 15, fontWeight: "600" },
+  childDetail: { fontSize: 13, lineHeight: 18 },
+  childAllergy: { fontSize: 13 },
+  addChildForm: { gap: 10, borderTopWidth: 1, paddingTop: 12 },
+  addChildTitle: { fontSize: 14, fontWeight: "600" },
   input: {
-    backgroundColor: "#0f172a",
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: "#334155",
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: "#f1f5f9",
   },
   addChildBtn: {
-    backgroundColor: "#f59e0b",
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: "center",
   },
   addChildBtnDisabled: { opacity: 0.4 },
-  addChildBtnText: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
+  addChildBtnText: { fontSize: 15, fontWeight: "700" },
   orderCard: {
     borderRadius: 12,
     padding: 14,
@@ -474,5 +465,5 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 12,
   },
-  changeSchoolText: { fontSize: 14, color: "#475569" },
+  changeSchoolText: { fontSize: 14 },
 });
