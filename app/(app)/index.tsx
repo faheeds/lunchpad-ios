@@ -195,7 +195,7 @@ export default function HomeScreen() {
           ListHeaderComponent={
             <TouchableOpacity
               style={[styles.planCta, { backgroundColor: theme.surface, borderColor: theme.primary }]}
-              onPress={() => router.push("/(app)/weekly-plan")}
+              onPress={() => router.push("/(app)/weekly-plan" as any)}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Plan the entire week"
@@ -248,11 +248,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
   },
   center: {
     flex: 1,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     gap: 16,
@@ -304,12 +302,10 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: "800",
-    color: "#f1f5f9",
     letterSpacing: -0.5,
   },
   headerSub: {
     fontSize: 14,
-    color: "#64748b",
     marginTop: 2,
   },
   list: {
@@ -336,7 +332,6 @@ const styles = StyleSheet.create({
   planCtaTitle: { fontSize: 15, fontWeight: "800", letterSpacing: -0.2 },
   planCtaSub: { fontSize: 12, marginTop: 2 },
   card: {
-    backgroundColor: "#1e293b",
     borderRadius: 16,
     padding: 16,
     flexDirection: "row",
@@ -346,7 +341,6 @@ const styles = StyleSheet.create({
   dateBlock: {
     width: 52,
     alignItems: "center",
-    backgroundColor: "#0f172a",
     borderRadius: 12,
     paddingVertical: 10,
     gap: 1,
@@ -354,19 +348,16 @@ const styles = StyleSheet.create({
   dateDay: {
     fontSize: 11,
     fontWeight: "600",
-    color: "#f59e0b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   dateNum: {
     fontSize: 24,
     fontWeight: "800",
-    color: "#f1f5f9",
     lineHeight: 28,
   },
   dateMon: {
     fontSize: 11,
-    color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -377,34 +368,27 @@ const styles = StyleSheet.create({
   schoolName: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#f1f5f9",
   },
   itemCount: {
     fontSize: 13,
-    color: "#94a3b8",
   },
   cutoff: {
     fontSize: 12,
-    color: "#f59e0b",
     fontWeight: "500",
     marginTop: 2,
   },
   arrow: {
     fontSize: 24,
-    color: "#334155",
   },
   errorText: {
-    color: "#f87171",
     fontSize: 15,
   },
   retryBtn: {
-    backgroundColor: "#1e293b",
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 10,
   },
   retryText: {
-    color: "#f59e0b",
     fontWeight: "600",
   },
   empty: {
@@ -420,12 +404,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#f1f5f9",
     textAlign: "center",
   },
   emptySub: {
     fontSize: 14,
-    color: "#64748b",
     textAlign: "center",
     lineHeight: 20,
   },

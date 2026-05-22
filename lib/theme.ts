@@ -13,7 +13,7 @@
  *
  *   primary  — main brand color, used for buttons, badges, headings
  *   accent   — secondary color, used for highlights, "popular" pills, etc.
- *   dark     — dark surface, used as the app background
+ *   dark     — app background (now light in editorial theme)
  *   bodyText — primary text color on light surfaces (cards)
  *
  * Plus iOS-specific tokens for surfaces, dividers, and the eight shades
@@ -72,12 +72,11 @@ export type Theme = {
   border: string;        // 1px lines between rows
   divider: string;       // section dividers
 
-  // Typography family. Bundled iOS system fonts only (no remote font
-  // loading at this stage). Display is reserved for headlines and the
-  // brand wordmark; body is used everywhere else and falls back to the
-  // system default.
-  fontDisplay: string;   // e.g. "Avenir Next" — used for page titles, brand
-  fontBody: string;      // e.g. "System" — paragraphs, labels
+  // Typography family. Display font is Fraunces (serif) for editorial
+  // feel; body is system default. Display is reserved for headlines and
+  // the brand wordmark; body is used everywhere else.
+  fontDisplay: string;   // Fraunces serif for editorial wordmark
+  fontBody: string;      // System — paragraphs, labels
 
   // Logos / heroes (URLs may be null even after resolution if tenant didn't upload one)
   logoUrl: string | null;
@@ -85,34 +84,33 @@ export type Theme = {
 };
 
 // ── Neutral LunchPad defaults ────────────────────────────────────────────────
+// Editorial light theme: warm cream background, deep green primary, clay accent,
 // Used when no tenant is connected (e.g. the school code entry screen before
 // validation) OR as a fallback when a tenant has a brand field unset.
 
 const NEUTRAL_THEME: Theme = {
   restaurant: null,
 
-  primary: "#f59e0b",            // amber — LunchPad accent
-  accent: "#fbbf24",             // lighter amber
-  dark: "#0f172a",               // slate-900
-  surface: "#1e293b",            // slate-800 — cards
-  surfaceElevated: "#334155",    // slate-700 — modals / raised
+  primary: "#2C4031",            // deep green — editorial primary
+  accent: "#C0673E",             // clay — editorial accent
+  dark: "#F6F1E6",               // warm cream — light background
+  surface: "#FFFFFF",            // white — card background
+  surfaceElevated: "#FEFBF6",    // pale cream — modals / raised
 
-  textPrimary: "#f1f5f9",        // slate-100
-  textSecondary: "#94a3b8",      // slate-400 (passes AA on dark)
-  textMuted: "#94a3b8",          // bumped one tier brighter for AA compliance
-  textOnPrimary: "#0f172a",      // dark text on amber CTA
+  textPrimary: "#211D15",        // deep ink — primary text
+  textSecondary: "#5B5651",      // warm gray — secondary text
+  textMuted: "#8A8580",          // muted warm gray — labels, placeholders
+  textOnPrimary: "#FFFFFF",      // white text on green CTA
 
-  danger: "#f87171",             // red-400
-  success: "#34d399",            // emerald-400
-  warning: "#fbbf24",            // amber-400
+  danger: "#DC2626",             // red — errors, warnings
+  success: "#059669",            // green — confirmations, paid
+  warning: "#D97706",            // amber — allergy chips, sold-out
 
-  border: "#1e293b",
-  divider: "#334155",
+  border: "#E3DBC6",             // hairline — subtle dividers
+  divider: "#DEE2CF",            // sage — section dividers
 
-  // iOS-native fonts. Avenir Next is shipped with iOS and reads as more
-  // editorial than System SF, which gives headlines a "deliberate" feel
-  // without bundling a custom .ttf. Falls back gracefully on any device.
-  fontDisplay: "Avenir Next",
+  // Fraunces for display (serif), System for body
+  fontDisplay: "Fraunces_800ExtraBold",
   fontBody: "System",
 
   logoUrl: null,
@@ -126,6 +124,8 @@ const NEUTRAL_THEME: Theme = {
  *
  * Text-on-primary is computed by luminance: light text on dark primaries,
  * dark text on light primaries. Matches what the web does via lib/contrast.
+ * Per-tenant brand colors override the primary and accent; surfaces,
+ * backgrounds, and text colors stay on the editorial light palette.
  */
 export function buildTheme(brand: RestaurantBrand | null): Theme {
   if (!brand) return NEUTRAL_THEME;
@@ -140,9 +140,9 @@ export function buildTheme(brand: RestaurantBrand | null): Theme {
     primary,
     accent,
     dark,
-    // Surfaces shift slightly toward `dark` so they read as cards on top
-    // of the app bg. Hardcoded slate-800/700 is fine for v1 — most
-    // restaurants will use a dark bg with brand-colored accents only.
+    // Surfaces stay on the editorial light palette (white/cream).
+    // Most restaurants will use the light background with brand-colored
+    // accents only (buttons, badges, headings).
     surface: NEUTRAL_THEME.surface,
     surfaceElevated: NEUTRAL_THEME.surfaceElevated,
 
@@ -158,7 +158,7 @@ export function buildTheme(brand: RestaurantBrand | null): Theme {
     border: NEUTRAL_THEME.border,
     divider: NEUTRAL_THEME.divider,
 
-    // Typography stays on iOS-native fonts unless we later bundle the
+    // Typography stays on Fraunces/System unless we later bundle a
     // restaurant's custom face. Tenant-set displayFont strings (e.g.
     // "Oswald") are passed through so a future build can opt into the
     // restaurant's web font by bundling the matching .ttf.
@@ -175,16 +175,17 @@ export function buildTheme(brand: RestaurantBrand | null): Theme {
  * background. Used so a button labeled with `theme.primary` as bg always
  * has readable text on it. Cheap luminance check — not full WCAG ratio
  * math, but good enough for the contrast band we care about.
+ * Light backgrounds get dark text; dark backgrounds get white text.
  */
 function contrastForeground(hex: string): string {
   const h = hex.replace("#", "");
-  if (h.length !== 6) return "#ffffff";
+  if (h.length !== 6) return "#211D15";
   const r = parseInt(h.slice(0, 2), 16);
   const g = parseInt(h.slice(2, 4), 16);
   const b = parseInt(h.slice(4, 6), 16);
   // Relative luminance approximation (WCAG-ish)
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6 ? "#0f172a" : "#ffffff";
+  return luminance > 0.6 ? "#211D15" : "#FFFFFF";
 }
 
 export const NEUTRAL = NEUTRAL_THEME;

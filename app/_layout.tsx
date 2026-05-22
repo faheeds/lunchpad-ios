@@ -1,6 +1,11 @@
+import { useEffect } from "react";
+import * as Font from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  Fraunces_800ExtraBold,
+} from "@expo-google-fonts/fraunces";
 import { ThemeProvider } from "../lib/theme-context";
 
 const queryClient = new QueryClient({
@@ -8,6 +13,12 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  useEffect(() => {
+    Font.loadAsync({
+      Fraunces_800ExtraBold,
+    });
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* ThemeProvider lives above the navigator so every screen — auth,
@@ -16,7 +27,7 @@ export default function RootLayout() {
           provider itself could choose to use react-query for its fetch
           if we ever swap the implementation. */}
       <ThemeProvider>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(app)" />

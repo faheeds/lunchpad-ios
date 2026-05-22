@@ -75,7 +75,7 @@ export default function SignInScreen() {
                 AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
               }
               buttonStyle={
-                AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
               }
               cornerRadius={12}
               style={styles.appleButton}
@@ -105,7 +105,6 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
   },
   inner: {
     flex: 1,
@@ -121,7 +120,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#f59e0b22",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 8,
@@ -132,12 +130,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: "800",
-    color: "#f1f5f9",
     textAlign: "center",
   },
   subtitle: {
     fontSize: 15,
-    color: "#94a3b8",
     textAlign: "center",
     lineHeight: 22,
     paddingHorizontal: 16,
@@ -152,7 +148,6 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    color: "#f87171",
     textAlign: "center",
   },
   guestButton: {
@@ -160,12 +155,10 @@ const styles = StyleSheet.create({
   },
   guestText: {
     fontSize: 15,
-    color: "#64748b",
     fontWeight: "500",
   },
   privacyNote: {
     fontSize: 12,
-    color: "#475569",
     textAlign: "center",
     paddingHorizontal: 24,
   },
