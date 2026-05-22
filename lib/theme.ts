@@ -167,7 +167,7 @@ export function buildTheme(brand: RestaurantBrand | null): Theme {
 
   const primary = brand.primaryColor ?? NEUTRAL_THEME.primary;
   const accent = brand.accentColor ?? NEUTRAL_THEME.accent;
-  const dark = brand.darkColor ?? NEUTRAL_THEME.dark;
+  const dark = NEUTRAL_THEME.dark;
   const bodyText = brand.bodyTextColor ?? NEUTRAL_THEME.textPrimary;
 
   return {
