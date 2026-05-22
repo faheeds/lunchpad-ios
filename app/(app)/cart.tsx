@@ -145,12 +145,14 @@ export default function CartScreen() {
     }
   }
 
+  const screenStyles = styles(theme);
+
   if (items.length === 0) {
     return (
-      <View style={[styles.empty, { backgroundColor: theme.dark }]}>
-        <Text style={styles.emptyIcon}>🛒</Text>
-        <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Your cart is empty</Text>
-        <Text style={[styles.emptySub, { color: theme.textMuted }]}>
+      <View style={[screenStyles.empty, { backgroundColor: theme.dark }]}>
+        <Text style={screenStyles.emptyIcon}>🛒</Text>
+        <Text style={[screenStyles.emptyTitle, { color: theme.textPrimary }]}>Your cart is empty</Text>
+        <Text style={[screenStyles.emptySub, { color: theme.textSecondary }]}>
           Go to Order to browse the menu and add items.
         </Text>
       </View>
@@ -158,52 +160,52 @@ export default function CartScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.dark }]}>
+    <View style={[screenStyles.container, { backgroundColor: theme.dark }]}>
       <SafeAreaView>
-        <View style={styles.header}>
+        <View style={screenStyles.header}>
           <Text
-            style={[styles.headerTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+            style={[screenStyles.headerTitle, { color: theme.textPrimary }]}
           >
             Your cart
           </Text>
-          <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+          <Text style={[screenStyles.headerSub, { color: theme.textMuted }]}>
             {unitCount} item{unitCount !== 1 ? "s" : ""}
           </Text>
         </View>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={screenStyles.scroll}>
         {/* Cart items */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Items</Text>
+        <View style={screenStyles.section}>
+          <Text style={screenStyles.sectionTitle}>Items</Text>
           {items.map((item) => {
             const lineTotal = item.lineTotalCents * item.quantity;
             return (
-              <View key={item.cartKey} style={styles.cartItem}>
-                <View style={styles.cartItemInfo}>
-                  <Text style={styles.cartItemName}>
+              <View key={item.cartKey} style={screenStyles.cartItem}>
+                <View style={screenStyles.cartItemInfo}>
+                  <Text style={[screenStyles.cartItemName, { color: theme.textPrimary }]}>
                     {item.itemName}
-                    {item.size ? <Text style={styles.cartItemNameSize}>{` · ${item.size}`}</Text> : null}
+                    {item.size ? <Text style={screenStyles.cartItemNameSize}>{` · ${item.size}`}</Text> : null}
                   </Text>
                   {item.choice && (
-                    <Text style={styles.cartItemChoice}>
+                    <Text style={screenStyles.cartItemChoice}>
                       {item.choice}
                     </Text>
                   )}
                   {item.additions.length > 0 && (
-                    <Text style={styles.cartItemMods}>
+                    <Text style={screenStyles.cartItemMods}>
                       + {item.additions.join(", ")}
                     </Text>
                   )}
                   {item.removals.length > 0 && (
-                    <Text style={styles.cartItemMods}>
+                    <Text style={screenStyles.cartItemMods}>
                       − {item.removals.join(", ")}
                     </Text>
                   )}
-                  <Text style={styles.cartItemPrice}>
+                  <Text style={screenStyles.cartItemPrice}>
                     {formatPrice(lineTotal)}
                     {item.quantity > 1 ? (
-                      <Text style={styles.cartItemPriceUnit}>
+                      <Text style={screenStyles.cartItemPriceUnit}>
                         {"  "}({formatPrice(item.lineTotalCents)} each)
                       </Text>
                     ) : null}
@@ -211,13 +213,13 @@ export default function CartScreen() {
                 </View>
 
                 {/* Quantity stepper */}
-                <View style={[styles.qtyControl, { backgroundColor: theme.dark }]}>
+                <View style={screenStyles.qtyControl}>
                   <TouchableOpacity
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                       decrementItem(item.cartKey);
                     }}
-                    style={styles.qtyBtn}
+                    style={screenStyles.qtyBtn}
                     accessibilityLabel={
                       item.quantity > 1
                         ? `Decrease ${item.itemName} quantity`
@@ -232,7 +234,7 @@ export default function CartScreen() {
                       color={theme.textPrimary}
                     />
                   </TouchableOpacity>
-                  <Text style={[styles.qtyValue, { color: theme.textPrimary }]}>
+                  <Text style={[screenStyles.qtyValue, { color: theme.textPrimary }]}>
                     {item.quantity}
                   </Text>
                   <TouchableOpacity
@@ -240,7 +242,7 @@ export default function CartScreen() {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                       incrementItem(item.cartKey);
                     }}
-                    style={styles.qtyBtn}
+                    style={screenStyles.qtyBtn}
                     accessibilityLabel={`Increase ${item.itemName} quantity`}
                     accessibilityRole="button"
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -254,26 +256,26 @@ export default function CartScreen() {
         </View>
 
         {/* Student info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Student</Text>
+        <View style={screenStyles.section}>
+          <Text style={screenStyles.sectionTitle}>Student</Text>
 
           {children.length > 0 && (
-            <View style={styles.childPicker}>
-              <Text style={styles.fieldLabel}>Saved profiles</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.childRow}>
+            <View style={screenStyles.childPicker}>
+              <Text style={screenStyles.fieldLabel}>Saved profiles</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={screenStyles.childRow}>
                 {children.map((child) => (
                   <TouchableOpacity
                     key={child.id}
                     style={[
-                      styles.childChip,
-                      selectedChildId === child.id && styles.childChipSelected,
+                      screenStyles.childChip,
+                      selectedChildId === child.id && screenStyles.childChipSelected,
                     ]}
                     onPress={() => setSelectedChildId(child.id)}
                   >
                     <Text
                       style={[
-                        styles.childChipText,
-                        selectedChildId === child.id && styles.childChipTextSelected,
+                        screenStyles.childChipText,
+                        selectedChildId === child.id && screenStyles.childChipTextSelected,
                       ]}
                     >
                       {child.studentName}
@@ -282,15 +284,15 @@ export default function CartScreen() {
                 ))}
                 <TouchableOpacity
                   style={[
-                    styles.childChip,
-                    selectedChildId === null && styles.childChipSelected,
+                    screenStyles.childChip,
+                    selectedChildId === null && screenStyles.childChipSelected,
                   ]}
                   onPress={() => setSelectedChildId(null)}
                 >
                   <Text
                     style={[
-                      styles.childChipText,
-                      selectedChildId === null && styles.childChipTextSelected,
+                      screenStyles.childChipText,
+                      selectedChildId === null && screenStyles.childChipTextSelected,
                     ]}
                   >
                     + New
@@ -323,24 +325,26 @@ export default function CartScreen() {
             </>
           )}
           {selectedChild && (
-            <View style={styles.selectedChildInfo}>
-              <Text style={styles.selectedChildName}>{selectedChild.studentName}</Text>
-              <Text style={styles.selectedChildGrade}>Grade: {selectedChild.grade}</Text>
+            <View style={screenStyles.selectedChildInfo}>
+              <Text style={[screenStyles.selectedChildName, { color: theme.textPrimary }]}>{selectedChild.studentName}</Text>
+              <Text style={screenStyles.selectedChildGrade}>Grade: {selectedChild.grade}</Text>
               {selectedChild.allergyNotes && (
-                <Text style={styles.selectedChildAllergy}>⚠️ {selectedChild.allergyNotes}</Text>
+                <Text style={screenStyles.selectedChildAllergy}>⚠️ {selectedChild.allergyNotes}</Text>
               )}
             </View>
           )}
         </View>
 
         {/* Parent info */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your info</Text>
+        <View style={screenStyles.section}>
+          <Text style={screenStyles.sectionTitle}>Your info</Text>
           <Field
             label="Your name"
             value={parentName || account?.name || ""}
             onChangeText={setParentName}
             placeholder="First Last"
+            theme={theme}
+            screenStyles={screenStyles}
           />
           <Field
             label="Email (for receipt)"
@@ -348,25 +352,27 @@ export default function CartScreen() {
             onChangeText={setParentEmail}
             placeholder="you@example.com"
             keyboardType="email-address"
+            theme={theme}
+            screenStyles={screenStyles}
           />
         </View>
 
         {/* Total */}
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalAmount}>{formatPrice(total)}</Text>
+        <View style={screenStyles.totalRow}>
+          <Text style={[screenStyles.totalLabel, { color: theme.textSecondary }]}>Total</Text>
+          <Text style={[screenStyles.totalAmount, { color: theme.textPrimary }]}>{formatPrice(total)}</Text>
         </View>
 
         <View style={{ height: 32 }} />
       </ScrollView>
 
       {/* Checkout button */}
-      <SafeAreaView style={styles.footer}>
+      <SafeAreaView style={[screenStyles.footer, { backgroundColor: theme.dark }]}>
         <TouchableOpacity
           style={[
-            styles.checkoutBtn,
+            screenStyles.checkoutBtn,
             { backgroundColor: theme.primary },
-            submitting && styles.checkoutBtnDisabled,
+            submitting && screenStyles.checkoutBtnDisabled,
           ]}
           onPress={handleCheckout}
           disabled={submitting}
@@ -376,7 +382,7 @@ export default function CartScreen() {
           {submitting ? (
             <ActivityIndicator color={theme.textOnPrimary} />
           ) : (
-            <Text style={[styles.checkoutBtnText, { color: theme.textOnPrimary }]}>
+            <Text style={[screenStyles.checkoutBtnText, { color: theme.textOnPrimary }]}>
               Checkout — {formatPrice(total)}
             </Text>
           )}
@@ -392,22 +398,26 @@ function Field({
   onChangeText,
   placeholder,
   keyboardType,
+  theme,
+  screenStyles,
 }: {
   label: string;
   value: string;
   onChangeText: (t: string) => void;
   placeholder?: string;
   keyboardType?: "default" | "email-address";
+  theme?: any;
+  screenStyles?: any;
 }) {
   return (
-    <View style={styles.fieldContainer}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={screenStyles?.fieldContainer}>
+      <Text style={screenStyles?.fieldLabel}>{label}</Text>
       <TextInput
-        style={styles.input}
+        style={screenStyles?.input}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#475569"
+        placeholderTextColor={theme?.textMuted}
         keyboardType={keyboardType ?? "default"}
         autoCapitalize={keyboardType === "email-address" ? "none" : "words"}
         autoCorrect={false}
@@ -416,18 +426,18 @@ function Field({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+const styles = (theme: any) => StyleSheet.create({
+  container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 12,
   },
-  headerTitle: { fontSize: 28, fontWeight: "800", color: "#f1f5f9", letterSpacing: -0.5 },
-  headerSub: { fontSize: 14, color: "#64748b", marginTop: 2 },
+  headerTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5, fontFamily: theme.fontDisplay },
+  headerSub: { fontSize: 14, color: theme.textMuted, marginTop: 2 },
   scroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 16 },
   section: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 16,
     padding: 16,
     gap: 12,
@@ -435,7 +445,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#64748b",
+    color: theme.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -445,27 +455,23 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#0f172a",
+    borderBottomColor: theme.border,
   },
   cartItemInfo: { flex: 1, gap: 3 },
-  cartItemName: { fontSize: 15, fontWeight: "600", color: "#f1f5f9" },
+  cartItemName: { fontSize: 15, fontWeight: "600" },
   cartItemNameSize: {
-    // Inline size suffix (e.g. " · Medium") rendered in lighter weight
-    // so the item name reads as primary and the size as a qualifier.
     fontSize: 14,
     fontWeight: "400",
-    color: "#94a3b8",
+    color: theme.textSecondary,
   },
-  cartItemMods: { fontSize: 12, color: "#64748b" },
+  cartItemMods: { fontSize: 12, color: theme.textSecondary },
   cartItemChoice: {
-    // Slightly brighter than additions/removals so the required pick-one
-    // reads as a primary attribute of the line (not just a modification).
     fontSize: 12,
     fontWeight: "600",
-    color: "#94a3b8",
+    color: theme.textSecondary,
   },
-  cartItemPrice: { fontSize: 14, fontWeight: "600", color: "#f59e0b", marginTop: 2 },
-  cartItemPriceUnit: { fontSize: 11, fontWeight: "500", color: "#64748b" },
+  cartItemPrice: { fontSize: 14, fontWeight: "600", color: theme.primary, marginTop: 2 },
+  cartItemPriceUnit: { fontSize: 11, fontWeight: "500", color: theme.textSecondary },
   removeBtn: { padding: 4 },
   qtyControl: {
     flexDirection: "row",
@@ -474,6 +480,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 4,
     gap: 4,
+    backgroundColor: theme.surfaceElevated,
   },
   qtyBtn: {
     width: 28,
@@ -494,66 +501,63 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.dark,
     marginRight: 8,
     borderWidth: 1.5,
-    borderColor: "#334155",
+    borderColor: theme.border,
   },
-  childChipSelected: { borderColor: "#f59e0b", backgroundColor: "#f59e0b1a" },
-  childChipText: { fontSize: 14, color: "#94a3b8", fontWeight: "500" },
-  childChipTextSelected: { color: "#f59e0b" },
+  childChipSelected: { borderColor: theme.primary, backgroundColor: `${theme.primary}1a` },
+  childChipText: { fontSize: 14, color: theme.textSecondary, fontWeight: "500" },
+  childChipTextSelected: { color: theme.primary },
   selectedChildInfo: {
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.dark,
     borderRadius: 10,
     padding: 12,
     gap: 4,
   },
-  selectedChildName: { fontSize: 15, fontWeight: "700", color: "#f1f5f9" },
-  selectedChildGrade: { fontSize: 13, color: "#94a3b8" },
-  selectedChildAllergy: { fontSize: 13, color: "#fbbf24" },
+  selectedChildName: { fontSize: 15, fontWeight: "700" },
+  selectedChildGrade: { fontSize: 13, color: theme.textSecondary },
+  selectedChildAllergy: { fontSize: 13, color: theme.warning },
   fieldContainer: { gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: "600", color: "#64748b", textTransform: "uppercase", letterSpacing: 0.5 },
+  fieldLabel: { fontSize: 12, fontWeight: "600", color: theme.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
   input: {
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.dark,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: "#334155",
+    borderColor: theme.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: "#f1f5f9",
+    color: theme.textPrimary,
   },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 4,
   },
-  totalLabel: { fontSize: 18, fontWeight: "600", color: "#94a3b8" },
-  totalAmount: { fontSize: 22, fontWeight: "800", color: "#f1f5f9" },
+  totalLabel: { fontSize: 18, fontWeight: "600", color: theme.textSecondary },
+  totalAmount: { fontSize: 22, fontWeight: "800" },
   footer: {
     paddingHorizontal: 16,
     paddingBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
-    backgroundColor: "#0f172a",
+    borderTopColor: theme.border,
   },
   checkoutBtn: {
-    backgroundColor: "#f59e0b",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
   },
   checkoutBtnDisabled: { opacity: 0.5 },
-  checkoutBtnText: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  checkoutBtnText: { fontSize: 17, fontWeight: "700" },
   empty: {
     flex: 1,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
     paddingHorizontal: 40,
   },
   emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", color: "#f1f5f9", textAlign: "center" },
-  emptySub: { fontSize: 14, color: "#64748b", textAlign: "center", lineHeight: 20 },
+  emptyTitle: { fontSize: 20, fontWeight: "700", textAlign: "center" },
+  emptySub: { fontSize: 15, color: theme.textSecondary, textAlign: "center", lineHeight: 20 },
 });

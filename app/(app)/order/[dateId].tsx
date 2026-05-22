@@ -92,6 +92,8 @@ function ItemModal({
   // Gate "Add to cart": both required-choice and size must be resolved.
   const canAddToCart = (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
 
+  const mModalStyles = modalStyles(theme);
+
   function toggleAddition(name: string) {
     setSelectedAdditions((prev) =>
       prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]
@@ -148,13 +150,13 @@ function ItemModal({
 
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
+      <View style={[mModalStyles.container, { backgroundColor: theme.dark }]}>
         {/* Handle + close */}
-        <View style={modalStyles.handleRow}>
-          <View style={modalStyles.handle} />
+        <View style={mModalStyles.handleRow}>
+          <View style={mModalStyles.handle} />
           <TouchableOpacity
             onPress={onClose}
-            style={modalStyles.closeBtn}
+            style={mModalStyles.closeBtn}
             accessibilityLabel="Close item details"
             accessibilityRole="button"
           >
@@ -162,24 +164,24 @@ function ItemModal({
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={modalStyles.scroll}>
+        <ScrollView contentContainerStyle={mModalStyles.scroll}>
           {/* Image */}
           {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={modalStyles.image} />
+            <Image source={{ uri: item.imageUrl }} style={mModalStyles.image} />
           ) : (
-            <View style={modalStyles.imagePlaceholder}>
-              <Text style={modalStyles.imagePlaceholderText}>🍽️</Text>
+            <View style={mModalStyles.imagePlaceholder}>
+              <Text style={mModalStyles.imagePlaceholderText}>🍽️</Text>
             </View>
           )}
 
           {/* Name + price */}
-          <View style={modalStyles.titleRow}>
-            <Text style={modalStyles.itemName}>{item.name}</Text>
-            <Text style={modalStyles.itemPrice}>{formatPrice(totalCents)}</Text>
+          <View style={mModalStyles.titleRow}>
+            <Text style={[mModalStyles.itemName, { color: theme.textPrimary }]}>{item.name}</Text>
+            <Text style={[mModalStyles.itemPrice, { color: theme.primary }]}>{formatPrice(totalCents)}</Text>
           </View>
 
           {item.description && (
-            <Text style={modalStyles.description}>{item.description}</Text>
+            <Text style={[mModalStyles.description, { color: theme.textSecondary }]}>{item.description}</Text>
           )}
 
           {/* Required choice picker — rendered first so it visually
@@ -193,13 +195,13 @@ function ItemModal({
               re-selects (no clear-by-retap) since you always need exactly
               one when sizes exist. */}
           {hasSize && (
-            <View style={modalStyles.section}>
-              <View style={modalStyles.sectionTitleRow}>
-                <Text style={modalStyles.sectionTitle}>
-                  Size <Text style={modalStyles.requiredMark}>· required</Text>
+            <View style={mModalStyles.section}>
+              <View style={mModalStyles.sectionTitleRow}>
+                <Text style={mModalStyles.sectionTitle}>
+                  Size <Text style={mModalStyles.requiredMark}>· required</Text>
                 </Text>
               </View>
-              <View style={modalStyles.choiceGrid}>
+              <View style={mModalStyles.choiceGrid}>
                 {sizes.map((sz) => {
                   const isSelected = selectedSize === sz.name;
                   return (
@@ -210,7 +212,7 @@ function ItemModal({
                         Haptics.selectionAsync().catch(() => {});
                       }}
                       style={[
-                        modalStyles.choiceChip,
+                        mModalStyles.choiceChip,
                         {
                           backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
                           borderColor: isSelected ? theme.primary : theme.border,
@@ -222,7 +224,7 @@ function ItemModal({
                     >
                       <Text
                         style={[
-                          modalStyles.choiceChipText,
+                          mModalStyles.choiceChipText,
                           { color: isSelected ? theme.textOnPrimary : theme.textPrimary },
                         ]}
                       >
@@ -230,7 +232,7 @@ function ItemModal({
                       </Text>
                       <Text
                         style={[
-                          modalStyles.sizePrice,
+                          mModalStyles.sizePrice,
                           { color: isSelected ? theme.textOnPrimary : theme.textSecondary },
                         ]}
                       >
@@ -244,13 +246,13 @@ function ItemModal({
           )}
 
           {hasRequiredChoice && (
-            <View style={modalStyles.section}>
-              <View style={modalStyles.sectionTitleRow}>
-                <Text style={modalStyles.sectionTitle}>
-                  Pick one <Text style={modalStyles.requiredMark}>· required</Text>
+            <View style={mModalStyles.section}>
+              <View style={mModalStyles.sectionTitleRow}>
+                <Text style={mModalStyles.sectionTitle}>
+                  Pick one <Text style={mModalStyles.requiredMark}>· required</Text>
                 </Text>
               </View>
-              <View style={modalStyles.choiceGrid}>
+              <View style={mModalStyles.choiceGrid}>
                 {requiredChoices.map((name) => {
                   const isSelected = selectedChoice === name;
                   return (
@@ -258,7 +260,7 @@ function ItemModal({
                       key={name}
                       onPress={() => pickChoice(name)}
                       style={[
-                        modalStyles.choiceChip,
+                        mModalStyles.choiceChip,
                         {
                           backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
                           borderColor: isSelected ? theme.primary : theme.border,
@@ -270,7 +272,7 @@ function ItemModal({
                     >
                       <Text
                         style={[
-                          modalStyles.choiceChipText,
+                          mModalStyles.choiceChipText,
                           { color: isSelected ? theme.textOnPrimary : theme.textPrimary },
                         ]}
                       >
@@ -285,25 +287,25 @@ function ItemModal({
 
           {/* Additions */}
           {additions.length > 0 && (
-            <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Add-ons</Text>
+            <View style={mModalStyles.section}>
+              <Text style={mModalStyles.sectionTitle}>Add-ons</Text>
               {additions.map((opt) => (
                 <TouchableOpacity
                   key={opt.id}
-                  style={modalStyles.optionRow}
+                  style={mModalStyles.optionRow}
                   onPress={() => toggleAddition(opt.name)}
                 >
                   <View style={[
-                    modalStyles.checkbox,
-                    selectedAdditions.includes(opt.name) && modalStyles.checkboxChecked,
+                    mModalStyles.checkbox,
+                    selectedAdditions.includes(opt.name) && mModalStyles.checkboxChecked,
                   ]}>
                     {selectedAdditions.includes(opt.name) && (
-                      <Ionicons name="checkmark" size={14} color="#0f172a" />
+                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
                     )}
                   </View>
-                  <Text style={modalStyles.optionName}>{opt.name}</Text>
+                  <Text style={[mModalStyles.optionName, { color: theme.textPrimary }]}>{opt.name}</Text>
                   {opt.priceDeltaCents > 0 && (
-                    <Text style={modalStyles.optionPrice}>
+                    <Text style={[mModalStyles.optionPrice, { color: theme.textSecondary }]}>
                       +{formatPrice(opt.priceDeltaCents)}
                     </Text>
                   )}
@@ -314,23 +316,23 @@ function ItemModal({
 
           {/* Removals */}
           {removals.length > 0 && (
-            <View style={modalStyles.section}>
-              <Text style={modalStyles.sectionTitle}>Remove</Text>
+            <View style={mModalStyles.section}>
+              <Text style={mModalStyles.sectionTitle}>Remove</Text>
               {removals.map((opt) => (
                 <TouchableOpacity
                   key={opt.id}
-                  style={modalStyles.optionRow}
+                  style={mModalStyles.optionRow}
                   onPress={() => toggleRemoval(opt.name)}
                 >
                   <View style={[
-                    modalStyles.checkbox,
-                    selectedRemovals.includes(opt.name) && modalStyles.checkboxChecked,
+                    mModalStyles.checkbox,
+                    selectedRemovals.includes(opt.name) && mModalStyles.checkboxChecked,
                   ]}>
                     {selectedRemovals.includes(opt.name) && (
-                      <Ionicons name="checkmark" size={14} color="#0f172a" />
+                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
                     )}
                   </View>
-                  <Text style={modalStyles.optionName}>{opt.name}</Text>
+                  <Text style={[mModalStyles.optionName, { color: theme.textPrimary }]}>{opt.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -342,10 +344,10 @@ function ItemModal({
             price) but dim it and add an inline hint when it's gated.
             Tapping while disabled does nothing — the chip picker above
             is the call-to-action in that state. */}
-        <SafeAreaView style={modalStyles.footer}>
+        <SafeAreaView style={[mModalStyles.footer, { backgroundColor: theme.dark }]}>
           <TouchableOpacity
             style={[
-              modalStyles.addButton,
+              mModalStyles.addButton,
               {
                 backgroundColor: canAddToCart ? theme.primary : theme.surfaceElevated,
                 opacity: canAddToCart ? 1 : 0.7,
@@ -360,7 +362,7 @@ function ItemModal({
           >
             <Text
               style={[
-                modalStyles.addButtonText,
+                mModalStyles.addButtonText,
                 { color: canAddToCart ? theme.textOnPrimary : theme.textMuted },
               ]}
             >
@@ -389,12 +391,13 @@ function MenuItemCard({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const cardStyles = styles(theme);
   return (
     <TouchableOpacity
       style={[
-        styles.menuCard,
+        cardStyles.menuCard,
         { backgroundColor: theme.surface },
-        soldOut && styles.menuCardSoldOut,
+        soldOut && cardStyles.menuCardSoldOut,
       ]}
       onPress={onPress}
       disabled={soldOut}
@@ -405,36 +408,36 @@ function MenuItemCard({
       accessibilityRole="button"
     >
       {item.imageUrl ? (
-        <Image source={{ uri: item.imageUrl }} style={styles.menuImage} />
+        <Image source={{ uri: item.imageUrl }} style={cardStyles.menuImage} />
       ) : (
-        <View style={[styles.menuImagePlaceholder, { backgroundColor: theme.dark }]}>
+        <View style={[cardStyles.menuImagePlaceholder, { backgroundColor: theme.dark }]}>
           <Text style={{ fontSize: 28 }}>🍽️</Text>
         </View>
       )}
-      <View style={styles.menuInfo}>
-        <Text style={[styles.menuName, { color: theme.textPrimary }]}>{item.name}</Text>
+      <View style={cardStyles.menuInfo}>
+        <Text style={[cardStyles.menuName, { color: theme.textPrimary }]}>{item.name}</Text>
         {item.description && (
           <Text
-            style={[styles.menuDesc, { color: theme.textSecondary }]}
+            style={[cardStyles.menuDesc, { color: theme.textSecondary }]}
             numberOfLines={2}
           >
             {item.description}
           </Text>
         )}
-        <Text style={[styles.menuPrice, { color: theme.primary }]}>
+        <Text style={[cardStyles.menuPrice, { color: theme.primary }]}>
           {formatPrice(item.basePriceCents)}
         </Text>
       </View>
       {soldOut ? (
-        <View style={[styles.soldOutBadge, { backgroundColor: theme.surfaceElevated }]}>
-          <Text style={[styles.soldOutText, { color: theme.textSecondary }]}>Sold out</Text>
+        <View style={[cardStyles.soldOutBadge, { backgroundColor: theme.surfaceElevated }]}>
+          <Text style={[cardStyles.soldOutText, { color: theme.textSecondary }]}>Sold out</Text>
         </View>
       ) : inCart ? (
-        <View style={styles.inCartBadge}>
+        <View style={cardStyles.inCartBadge}>
           <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
         </View>
       ) : (
-        <View style={styles.addIcon}>
+        <View style={cardStyles.addIcon}>
           <Ionicons name="add-circle-outline" size={24} color={theme.textMuted} />
         </View>
       )}
@@ -462,37 +465,38 @@ export default function OrderScreen() {
 
   if (isLoading || !deliveryDate) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.dark }]}>
-        <Text style={[styles.loadingText, { color: theme.textMuted }]}>Loading menu…</Text>
+      <View style={[styles(theme).center, { backgroundColor: theme.dark }]}>
+        <Text style={[styles(theme).loadingText, { color: theme.textMuted }]}>Loading menu…</Text>
       </View>
     );
   }
 
   const soldOutSet = new Set(deliveryDate.soldOut);
+  const screenStyles = styles(theme);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.dark }]}>
+    <View style={[screenStyles.container, { backgroundColor: theme.dark }]}>
       {/* Header */}
       <SafeAreaView>
-        <View style={styles.header}>
+        <View style={screenStyles.header}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={styles.backBtn}
+            style={screenStyles.backBtn}
             accessibilityLabel="Back to delivery dates"
             accessibilityRole="button"
           >
             <Ionicons name="chevron-back" size={24} color={theme.textPrimary} />
           </TouchableOpacity>
-          <View style={styles.headerText}>
+          <View style={screenStyles.headerText}>
             <Text
               style={[
-                styles.headerDate,
-                { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+                screenStyles.headerDate,
+                { color: theme.textPrimary },
               ]}
             >
               {formatDateLong(deliveryDate.deliveryDate)}
             </Text>
-            <Text style={[styles.headerSchool, { color: theme.textMuted }]}>
+            <Text style={[screenStyles.headerSchool, { color: theme.textMuted }]}>
               {deliveryDate.school.name}
             </Text>
           </View>
@@ -503,7 +507,7 @@ export default function OrderScreen() {
       <FlatList
         data={deliveryDate.menuItems}
         keyExtractor={(i) => i.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={screenStyles.list}
         renderItem={({ item }) => (
           <MenuItemCard
             item={item}
@@ -516,9 +520,9 @@ export default function OrderScreen() {
 
       {/* Floating cart button */}
       {cartCount > 0 && (
-        <SafeAreaView style={styles.cartBarWrapper}>
+        <SafeAreaView style={screenStyles.cartBarWrapper}>
           <TouchableOpacity
-            style={[styles.cartBar, { backgroundColor: theme.primary }]}
+            style={[screenStyles.cartBar, { backgroundColor: theme.primary }]}
             onPress={() => {
               Haptics.selectionAsync().catch(() => {});
               router.push("/(app)/cart");
@@ -526,13 +530,13 @@ export default function OrderScreen() {
             accessibilityLabel={`View cart with ${cartCount} items, ${formatPrice(cartTotal)}`}
             accessibilityRole="button"
           >
-            <View style={[styles.cartBadge, { backgroundColor: theme.dark }]}>
-              <Text style={[styles.cartBadgeText, { color: theme.primary }]}>
+            <View style={[screenStyles.cartBadge, { backgroundColor: theme.dark }]}>
+              <Text style={[screenStyles.cartBadgeText, { color: theme.primary }]}>
                 {cartCount}
               </Text>
             </View>
-            <Text style={[styles.cartBarText, { color: theme.textOnPrimary }]}>View cart</Text>
-            <Text style={[styles.cartBarPrice, { color: theme.textOnPrimary }]}>
+            <Text style={[screenStyles.cartBarText, { color: theme.textOnPrimary }]}>View cart</Text>
+            <Text style={[screenStyles.cartBarPrice, { color: theme.textOnPrimary }]}>
               {formatPrice(cartTotal)}
             </Text>
           </TouchableOpacity>
@@ -551,10 +555,10 @@ export default function OrderScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  center: { flex: 1, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" },
-  loadingText: { color: "#64748b", fontSize: 15 },
+const styles = (theme: any) => StyleSheet.create({
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  loadingText: { color: theme.textMuted, fontSize: 15 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -564,11 +568,11 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   headerText: { flex: 1 },
-  headerDate: { fontSize: 18, fontWeight: "700", color: "#f1f5f9" },
-  headerSchool: { fontSize: 13, color: "#64748b", marginTop: 1 },
+  headerDate: { fontSize: 18, fontWeight: "700", fontFamily: theme.fontDisplay },
+  headerSchool: { fontSize: 13, color: theme.textMuted, marginTop: 1 },
   list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10 },
   menuCard: {
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -579,22 +583,22 @@ const styles = StyleSheet.create({
   menuImagePlaceholder: {
     width: 80,
     height: 80,
-    backgroundColor: "#0f172a",
+    backgroundColor: theme.dark,
     alignItems: "center",
     justifyContent: "center",
   },
   menuInfo: { flex: 1, padding: 12, gap: 3 },
-  menuName: { fontSize: 15, fontWeight: "700", color: "#f1f5f9" },
-  menuDesc: { fontSize: 12, color: "#64748b", lineHeight: 16 },
-  menuPrice: { fontSize: 14, fontWeight: "600", color: "#f59e0b", marginTop: 2 },
+  menuName: { fontSize: 15, fontWeight: "700" },
+  menuDesc: { fontSize: 12, lineHeight: 16 },
+  menuPrice: { fontSize: 14, fontWeight: "600", marginTop: 2 },
   soldOutBadge: {
     marginRight: 14,
-    backgroundColor: "#334155",
+    backgroundColor: theme.surfaceElevated,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  soldOutText: { fontSize: 11, color: "#64748b", fontWeight: "600" },
+  soldOutText: { fontSize: 11, fontWeight: "600" },
   inCartBadge: { marginRight: 14 },
   addIcon: { marginRight: 14 },
   cartBarWrapper: {
@@ -606,7 +610,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   cartBar: {
-    backgroundColor: "#f59e0b",
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -615,20 +618,19 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cartBadge: {
-    backgroundColor: "#0f172a",
     borderRadius: 10,
     width: 24,
     height: 24,
     alignItems: "center",
     justifyContent: "center",
   },
-  cartBadgeText: { fontSize: 12, fontWeight: "800", color: "#f59e0b" },
-  cartBarText: { flex: 1, fontSize: 16, fontWeight: "700", color: "#0f172a" },
-  cartBarPrice: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  cartBadgeText: { fontSize: 12, fontWeight: "800" },
+  cartBarText: { flex: 1, fontSize: 16, fontWeight: "700" },
+  cartBarPrice: { fontSize: 16, fontWeight: "700" },
 });
 
-const modalStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
+const modalStyles = (theme: any) => StyleSheet.create({
+  container: { flex: 1 },
   handleRow: {
     alignItems: "center",
     paddingTop: 12,
@@ -639,7 +641,7 @@ const modalStyles = StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: "#334155",
+    backgroundColor: theme.border,
     borderRadius: 2,
     position: "absolute",
     top: 16,
@@ -655,7 +657,7 @@ const modalStyles = StyleSheet.create({
   imagePlaceholder: {
     width: "100%",
     height: 160,
-    backgroundColor: "#1e293b",
+    backgroundColor: theme.surface,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -668,14 +670,14 @@ const modalStyles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 12,
   },
-  itemName: { flex: 1, fontSize: 22, fontWeight: "800", color: "#f1f5f9" },
-  itemPrice: { fontSize: 20, fontWeight: "700", color: "#f59e0b" },
-  description: { fontSize: 14, color: "#94a3b8", lineHeight: 20 },
+  itemName: { flex: 1, fontSize: 22, fontWeight: "800", fontFamily: theme.fontDisplay },
+  itemPrice: { fontSize: 20, fontWeight: "700" },
+  description: { fontSize: 15, lineHeight: 20 },
   section: { gap: 8 },
   sectionTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#64748b",
+    color: theme.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -686,7 +688,7 @@ const modalStyles = StyleSheet.create({
     marginBottom: 4,
   },
   requiredMark: {
-    color: "#f59e0b",
+    color: theme.accent,
     fontSize: 12,
     fontWeight: "700",
     textTransform: "none",
@@ -707,7 +709,7 @@ const modalStyles = StyleSheet.create({
     gap: 8,
   },
   choiceChipText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
   },
   sizePrice: {
@@ -720,32 +722,30 @@ const modalStyles = StyleSheet.create({
     gap: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#1e293b",
+    borderBottomColor: theme.border,
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 6,
     borderWidth: 1.5,
-    borderColor: "#334155",
+    borderColor: theme.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxChecked: { backgroundColor: "#f59e0b", borderColor: "#f59e0b" },
-  optionName: { flex: 1, fontSize: 15, color: "#f1f5f9" },
-  optionPrice: { fontSize: 14, color: "#64748b" },
+  checkboxChecked: { backgroundColor: theme.primary, borderColor: theme.primary },
+  optionName: { flex: 1, fontSize: 15 },
+  optionPrice: { fontSize: 14, color: theme.textSecondary },
   footer: {
     paddingHorizontal: 20,
     paddingBottom: 8,
-    backgroundColor: "#0f172a",
     borderTopWidth: 1,
-    borderTopColor: "#1e293b",
+    borderTopColor: theme.border,
   },
   addButton: {
-    backgroundColor: "#f59e0b",
     borderRadius: 14,
     paddingVertical: 15,
     alignItems: "center",
   },
-  addButtonText: { fontSize: 17, fontWeight: "700", color: "#0f172a" },
+  addButtonText: { fontSize: 17, fontWeight: "700" },
 });

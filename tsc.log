@@ -1,0 +1,1 @@
+app/(app)/index.tsx(198,42): error TS2345: Argument of type '"/(app)/weekly-plan"' is not assignable to parameter of type 'RelativePathString | ExternalPathString | "/" | `/?${string}` | `/#${string}` | "/_sitemap" | `/_sitemap?${string}` | `/_sitemap#${string}` | "/(app)" | "/(app)/account" | ... 41 more ... | { ...; }'.
