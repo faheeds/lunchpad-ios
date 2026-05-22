@@ -53,13 +53,13 @@ export default function AccountScreen() {
   const [childName, setChildName] = useState("");
   const [childGrade, setChildGrade] = useState("");
   const [childAllergy, setChildAllergy] = useState("");
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
 
   const addChildMutation = useMutation({
     mutationFn: async () => {
-      const { data: dates } = await fetchDatesForSchool();
-      const schoolId = dates?.[0]?.schoolId ?? "";
       return addChild({
-        schoolId,
+        schoolId: selectedSchoolId ?? "",
         studentName: childName.trim(),
         grade: childGrade.trim(),
         allergyNotes: childAllergy.trim() || undefined,
@@ -71,13 +71,20 @@ export default function AccountScreen() {
       setChildName("");
       setChildGrade("");
       setChildAllergy("");
+      setSelectedSchoolId(null);
     },
   });
 
-  async function fetchDatesForSchool() {
+  async function loadSchools() {
     const { fetchDeliveryDates } = await import("../../lib/api");
     const dates = await fetchDeliveryDates();
-    return { data: dates };
+    const uniqueSchools = Array.from(
+      new Map(dates.map((d) => [d.schoolId, { id: d.schoolId, name: d.school.name }])).values()
+    );
+    setSchools(uniqueSchools);
+    if (uniqueSchools.length === 1) {
+      setSelectedSchoolId(uniqueSchools[0].id);
+    }
   }
 
   async function handleSignOut() {
@@ -175,7 +182,15 @@ export default function AccountScreen() {
           <View style={[styles.section, { backgroundColor: theme.surface }]}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Saved children</Text>
-              <TouchableOpacity onPress={() => setShowAddChild((v) => !v)}>
+              <TouchableOpacity
+                onPress={() => {
+                  const newShowAddChild = !showAddChild;
+                  setShowAddChild(newShowAddChild);
+                  if (newShowAddChild) {
+                    loadSchools();
+                  }
+                }}
+              >
                 <Ionicons
                   name={showAddChild ? "chevron-up" : "add-circle-outline"}
                   size={22}
@@ -212,6 +227,35 @@ export default function AccountScreen() {
             {showAddChild && (
               <View style={[styles.addChildForm, { borderTopColor: theme.border }]}>
                 <Text style={[styles.addChildTitle, { color: theme.textSecondary }]}>Add child</Text>
+                {schools.length > 1 && (
+                  <View style={styles.schoolPickerWrapper}>
+                    <Text style={[styles.schoolPickerLabel, { color: theme.textSecondary }]}>School</Text>
+                    <View style={styles.schoolChips}>
+                      {schools.map((school) => (
+                        <TouchableOpacity
+                          key={school.id}
+                          style={[
+                            styles.schoolChip,
+                            {
+                              backgroundColor: selectedSchoolId === school.id ? theme.primary : theme.dark,
+                              borderColor: selectedSchoolId === school.id ? theme.primary : theme.border,
+                            },
+                          ]}
+                          onPress={() => setSelectedSchoolId(school.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.schoolChipText,
+                              { color: selectedSchoolId === school.id ? theme.textOnPrimary : theme.textPrimary },
+                            ]}
+                          >
+                            {school.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
                 <TextInput
                   style={[styles.input, { backgroundColor: theme.dark, borderColor: theme.border, color: theme.textPrimary }]}
                   value={childName}
@@ -238,10 +282,10 @@ export default function AccountScreen() {
                   style={[
                     styles.addChildBtn,
                     { backgroundColor: theme.primary },
-                    (!childName.trim() || !childGrade.trim()) && styles.addChildBtnDisabled,
+                    (!childName.trim() || !childGrade.trim() || !selectedSchoolId) && styles.addChildBtnDisabled,
                   ]}
                   onPress={() => addChildMutation.mutate()}
-                  disabled={!childName.trim() || !childGrade.trim() || addChildMutation.isPending}
+                  disabled={!childName.trim() || !childGrade.trim() || !selectedSchoolId || addChildMutation.isPending}
                 >
                   {addChildMutation.isPending ? (
                     <ActivityIndicator color={theme.textOnPrimary} />
@@ -423,6 +467,16 @@ const styles = StyleSheet.create({
   childAllergy: { fontSize: 13 },
   addChildForm: { gap: 10, borderTopWidth: 1, paddingTop: 12 },
   addChildTitle: { fontSize: 14, fontWeight: "600" },
+  schoolPickerWrapper: { gap: 6 },
+  schoolPickerLabel: { fontSize: 12, fontWeight: "600" },
+  schoolChips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  schoolChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  schoolChipText: { fontSize: 13, fontWeight: "600" },
   input: {
     borderRadius: 10,
     borderWidth: 1.5,

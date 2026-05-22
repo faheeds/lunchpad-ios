@@ -211,10 +211,10 @@ export default function MenuScreen() {
           onClose={() => setSelectedItem(null)}
           onOrder={() => {
             setSelectedItem(null);
-            // Send the customer to the home screen to pick a delivery date.
-            // We don't preselect the item — once a date is chosen, the user
-            // adds it like any other item. Could deep-link later if needed.
-            router.push("/(app)");
+            router.push({
+              pathname: "/(app)",
+              params: { preselectedItemId: selectedItem.id },
+            });
           }}
         />
       )}

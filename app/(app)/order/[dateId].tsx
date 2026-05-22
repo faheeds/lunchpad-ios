@@ -3,7 +3,7 @@
  * Tap an item to add it to the cart.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -448,7 +448,7 @@ function MenuItemCard({
 // ── Screen ───────────────────────────────────────────────────────────────────
 
 export default function OrderScreen() {
-  const { dateId } = useLocalSearchParams<{ dateId: string }>();
+  const { dateId, preselectedItemId } = useLocalSearchParams<{ dateId: string; preselectedItemId?: string }>();
   const router = useRouter();
   const theme = useTheme();
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -462,6 +462,16 @@ export default function OrderScreen() {
   });
 
   const deliveryDate = allDates?.find((d) => d.id === dateId);
+
+  // Auto-select item if preselectedItemId is provided
+  useEffect(() => {
+    if (preselectedItemId && deliveryDate && !selectedItem) {
+      const item = deliveryDate.menuItems.find((i) => i.id === preselectedItemId);
+      if (item) {
+        setSelectedItem(item);
+      }
+    }
+  }, [preselectedItemId, deliveryDate, selectedItem]);
 
   if (isLoading || !deliveryDate) {
     return (
