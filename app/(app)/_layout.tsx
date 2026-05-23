@@ -1,41 +1,15 @@
+/**
+ * App tab bar. Four destinations — Home, Menu, Weekly, Account.
+ *
+ * The cart is no longer a permanent tab: it's reached contextually from
+ * the order flow's floating bar (standard for modern food apps) and so
+ * is registered as a hidden route. Weekly planning is promoted from a
+ * hidden route to a first-class tab.
+ */
+
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useCart } from "../../lib/store";
-import { View, Text, StyleSheet, Animated } from "react-native";
-import { useEffect, useRef } from "react";
 import { useTheme } from "../../lib/theme";
-
-/**
- * Cart-count badge with a subtle pulse animation on count change. When
- * the user taps "Add to cart" anywhere in the app, the badge briefly
- * scales up and back — gives a tactile sense that the action took effect.
- */
-function CartBadge() {
-  const count = useCart((s) => s.count());
-  const theme = useTheme();
-  const scale = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (count === 0) return;
-    Animated.sequence([
-      Animated.spring(scale, { toValue: 1.3, useNativeDriver: true, friction: 4 }),
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 4 }),
-    ]).start();
-  }, [count, scale]);
-
-  if (count === 0) return null;
-  return (
-    <Animated.View
-      style={[
-        styles.badge,
-        { backgroundColor: theme.primary, transform: [{ scale }] },
-      ]}
-      accessibilityLabel={`${count} items in cart`}
-    >
-      <Text style={[styles.badgeText, { color: theme.textOnPrimary }]}>{count}</Text>
-    </Animated.View>
-  );
-}
 
 export default function AppLayout() {
   const theme = useTheme();
@@ -44,8 +18,8 @@ export default function AppLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: theme.dark,
-          borderTopColor: theme.surface,
+          backgroundColor: theme.surface,
+          borderTopColor: theme.border,
           borderTopWidth: 1,
         },
         tabBarActiveTintColor: theme.primary,
@@ -56,9 +30,9 @@ export default function AppLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Order",
+          title: "Home",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
         }}
       />
@@ -72,14 +46,11 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="cart"
+        name="weekly-plan"
         options={{
-          title: "Cart",
+          title: "Weekly",
           tabBarIcon: ({ color, size }) => (
-            <View>
-              <Ionicons name="bag-outline" size={size} color={color} />
-              <CartBadge />
-            </View>
+            <Ionicons name="calendar-outline" size={size} color={color} />
           ),
         }}
       />
@@ -92,37 +63,10 @@ export default function AppLayout() {
           ),
         }}
       />
-      {/* Hidden tabs — navigated to programmatically */}
-      <Tabs.Screen
-        name="order/[dateId]"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="orders/[orderId]"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="weekly-plan"
-        options={{ href: null }}
-      />
+      {/* Hidden — reached programmatically */}
+      <Tabs.Screen name="cart" options={{ href: null }} />
+      <Tabs.Screen name="order/[dateId]" options={{ href: null }} />
+      <Tabs.Screen name="orders/[orderId]" options={{ href: null }} />
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  badge: {
-    position: "absolute",
-    top: -4,
-    right: -8,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 3,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-  },
-});
