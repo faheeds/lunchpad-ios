@@ -227,7 +227,9 @@ export default function HomeScreen() {
             <DeliveryDateCard
               item={item}
               onPress={() => {
-                const params: Record<string, string> = { dateId: item.id };
+                const params: { dateId: string; preselectedItemId?: string } = {
+                  dateId: item.id,
+                };
                 if (preselectedItemId) {
                   params.preselectedItemId = preselectedItemId;
                 }
