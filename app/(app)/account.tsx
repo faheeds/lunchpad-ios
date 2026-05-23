@@ -74,7 +74,11 @@ export default function AccountScreen() {
         allergyNotes: childAllergy.trim() || undefined,
       }),
     onSuccess: () => {
+      // Refresh both the account query AND the weekly-plans bundle — the
+      // Weekly screen reads its eater list from weekly-plans, so without
+      // this it keeps showing the stale "Add an eater first" empty state.
       queryClient.invalidateQueries({ queryKey: ["account"] });
+      queryClient.invalidateQueries({ queryKey: ["weekly-plans"] });
       setShowAddChild(false);
       setChildName("");
       setChildGrade("");
