@@ -1,16 +1,10 @@
 /**
- * Weekly plan — iOS equivalent of the web's /weekly page.
+ * Weekly plan — promoted to a first-class tab and rebuilt on the
+ * editorial chassis. Plan a meal for each upcoming weekday the operator
+ * runs, then pay for the whole week in one checkout.
  *
- * Layout:
- *   - Header: "Plan the week" + restaurant context
- *   - Child picker (chips) — switches the planner view to that child's slots
- *   - Per-weekday card — Mon → Fri, each showing the planned meal or
- *     "Add meal" CTA when empty
- *   - Sticky footer: "Checkout the week" button with the running total
- *
- * Tapping a weekday slot opens a pageSheet modal listing menu items
- * available on that day's delivery date — selection saves a WeeklyLunchPlan
- * via POST and updates state.
+ * Logic (data-driven weekday slots, per-eater switching, weekly Stripe
+ * checkout) is unchanged from the original — this is a visual redesign.
  */
 
 import { useState, useMemo } from "react";
@@ -24,7 +18,6 @@ import {
   SafeAreaView,
   Modal,
   Alert,
-  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -40,30 +33,21 @@ import {
 import { formatPrice } from "../../lib/store";
 import { useTheme } from "../../lib/theme";
 import type { MenuItem, WeeklyDeliveryDate, WeeklyPlan } from "../../lib/types";
+import { FoodImage } from "../../components/FoodImage";
+import { Screen, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
-// weekday: 1=Mon ... 7=Sun (matches the server's getWeekdayNumber convention)
-// We render whichever weekdays the restaurant actually has scheduled —
-// no hardcoded Mon-Fri / Mon-Thu cap. LunchPad is multi-tenant; some
-// operators do Fri / Sat / Sun deliveries and we shouldn't hide them.
 const ALL_WEEKDAYS = [
-  { num: 1, label: "Mon", long: "Monday" },
-  { num: 2, label: "Tue", long: "Tuesday" },
-  { num: 3, label: "Wed", long: "Wednesday" },
-  { num: 4, label: "Thu", long: "Thursday" },
-  { num: 5, label: "Fri", long: "Friday" },
-  { num: 6, label: "Sat", long: "Saturday" },
-  { num: 7, label: "Sun", long: "Sunday" },
+  { num: 1, label: "MON", long: "Monday" },
+  { num: 2, label: "TUE", long: "Tuesday" },
+  { num: 3, label: "WED", long: "Wednesday" },
+  { num: 4, label: "THU", long: "Thursday" },
+  { num: 5, label: "FRI", long: "Friday" },
+  { num: 6, label: "SAT", long: "Saturday" },
+  { num: 7, label: "SUN", long: "Sunday" },
 ];
 
-/**
- * Compute the weekday number (1-7, Mon-Sun) from an ISO date string in
- * the school's timezone. Matches the server's `getWeekdayNumber` so the
- * picker can match plan weekdays to actual delivery dates.
- */
 function getWeekdayFromISO(iso: string): number {
-  const d = new Date(iso);
-  // getUTCDay returns 0=Sun..6=Sat. Map to 1=Mon..7=Sun.
-  const dow = d.getUTCDay();
+  const dow = new Date(iso).getUTCDay();
   return dow === 0 ? 7 : dow;
 }
 
@@ -74,57 +58,47 @@ export default function WeeklyPlanScreen() {
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState<{ weekday: number; childId: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const s = styles(theme);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["weekly-plans"],
     queryFn: fetchWeeklyPlans,
   });
 
-  // Auto-select first child when data loads
-  const activeChildId =
-    selectedChildId ?? data?.children[0]?.id ?? null;
+  const activeChildId = selectedChildId ?? data?.children[0]?.id ?? null;
 
   const upsertMutation = useMutation({
     mutationFn: upsertWeeklyPlan,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
   });
-
   const deleteMutation = useMutation({
     mutationFn: deleteWeeklyPlan,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
   });
 
-  // ── Derived data ──────────────────────────────────────────────────────────
   const activeChild = data?.children.find((c) => c.id === activeChildId) ?? null;
   const childPlans = useMemo(
     () => (data?.plans ?? []).filter((p) => p.parentChildId === activeChildId),
-    [data, activeChildId]
+    [data, activeChildId],
   );
 
-  // Data-driven weekday slots: render a slot for each weekday that
-  // *either* has an open delivery date for this child's school OR has a
-  // pre-existing plan saved. Renders in calendar order (Mon→Sun) even
-  // if dates arrive out of order. If a restaurant runs Mon/Wed/Fri only,
-  // the user sees three slots — no fake "No delivery scheduled" rows.
   const weekdaySlots = useMemo(() => {
-    if (!data || !activeChild) return [] as Array<{
-      weekday: typeof ALL_WEEKDAYS[number];
-      date: WeeklyDeliveryDate;
-      plan: WeeklyPlan | null;
-    }>;
+    if (!data || !activeChild)
+      return [] as Array<{
+        weekday: (typeof ALL_WEEKDAYS)[number];
+        date: WeeklyDeliveryDate;
+        plan: WeeklyPlan | null;
+      }>;
     return ALL_WEEKDAYS.flatMap((w) => {
       const date = data.deliveryDates.find(
-        (d) =>
-          d.schoolId === activeChild.schoolId &&
-          getWeekdayFromISO(d.deliveryDate) === w.num
+        (d) => d.schoolId === activeChild.schoolId && getWeekdayFromISO(d.deliveryDate) === w.num,
       );
-      if (!date) return []; // no delivery → no slot
+      if (!date) return [];
       const plan = childPlans.find((p) => p.weekday === w.num) ?? null;
       return [{ weekday: w, date, plan }];
     });
   }, [data, activeChild, childPlans]);
 
-  // Running total across ALL children's plans (the batch covers everything)
   const totalCents = useMemo(() => {
     if (!data) return 0;
     let sum = 0;
@@ -132,24 +106,25 @@ export default function WeeklyPlanScreen() {
       const child = data.children.find((c) => c.id === plan.parentChildId);
       if (!child) continue;
       const date = data.deliveryDates.find(
-        (d) =>
-          d.schoolId === child.schoolId &&
-          getWeekdayFromISO(d.deliveryDate) === plan.weekday
+        (d) => d.schoolId === child.schoolId && getWeekdayFromISO(d.deliveryDate) === plan.weekday,
       );
       if (!date) continue;
       const item = date.menuItems.find((m) => m.id === plan.menuItemId);
       if (!item) continue;
       const addOnCost = item.options
-        .filter((o) => (o.optionType === "ADD" || o.optionType === "ADD_ON") && plan.additions.includes(o.name))
-        .reduce((s, o) => s + o.priceDeltaCents, 0);
+        .filter(
+          (o) =>
+            (o.optionType === "ADD" || o.optionType === "ADD_ON") && plan.additions.includes(o.name),
+        )
+        .reduce((acc, o) => acc + o.priceDeltaCents, 0);
       sum += item.basePriceCents + addOnCost;
     }
     return sum;
   }, [data]);
 
   const activePlanCount = data?.plans.length ?? 0;
+  const childPlanCount = childPlans.length;
 
-  // ── Checkout ──────────────────────────────────────────────────────────────
   async function handleCheckout() {
     if (activePlanCount === 0) {
       Alert.alert("No meals planned", "Add at least one meal before checking out.");
@@ -159,19 +134,12 @@ export default function WeeklyPlanScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
       const { checkoutUrl } = await createWeeklyCheckout();
-      // Same in-app browser pattern as single-order checkout.
-      const result = await WebBrowser.openAuthSessionAsync(
-        checkoutUrl,
-        "lunchpad://checkout/success"
-      );
-      if (result.type === "success" && result.url) {
-        if (result.url.includes("/checkout/success")) {
-          const match = result.url.match(/[?&]orderId=([^&]+)/);
-          const orderId = match ? decodeURIComponent(match[1]) : "";
-          // Invalidate caches so the home + account screens reflect the new orders
-          queryClient.invalidateQueries();
-          router.replace({ pathname: "/checkout/success", params: { orderId } });
-        }
+      const result = await WebBrowser.openAuthSessionAsync(checkoutUrl, "lunchpad://checkout/success");
+      if (result.type === "success" && result.url && result.url.includes("/checkout/success")) {
+        const match = result.url.match(/[?&]orderId=([^&]+)/);
+        const orderId = match ? decodeURIComponent(match[1]) : "";
+        queryClient.invalidateQueries();
+        router.replace({ pathname: "/checkout/success", params: { orderId } });
       }
     } catch (err) {
       Alert.alert("Error", err instanceof Error ? err.message : "Checkout failed.");
@@ -180,225 +148,210 @@ export default function WeeklyPlanScreen() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.dark }]}>
-        <ActivityIndicator color={theme.primary} size="large" />
-      </View>
+      <Screen>
+        <View style={s.center}>
+          <ActivityIndicator color={theme.primary} size="large" />
+        </View>
+      </Screen>
     );
   }
 
   if (isError || !data) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.dark }]}>
-        <Text style={[styles.errorText, { color: theme.danger }]}>
-          Couldn&apos;t load weekly plans.
-        </Text>
-        <TouchableOpacity
-          onPress={() => refetch()}
-          style={[styles.retryBtn, { backgroundColor: theme.surface }]}
-        >
-          <Text style={[styles.retryText, { color: theme.primary }]}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <Screen>
+        <SafeAreaView style={{ flex: 1 }}>
+          <EmptyState
+            icon="cloud-offline-outline"
+            title="Couldn't load weekly plans"
+            message="Check your connection and try again."
+            actionLabel="Retry"
+            onAction={() => refetch()}
+          />
+        </SafeAreaView>
+      </Screen>
     );
   }
 
   if (data.children.length === 0) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.dark, paddingHorizontal: 32 }]}>
-        <Text style={styles.emptyIcon}>👶</Text>
-        <Text style={[styles.emptyTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
-          Add a child first
-        </Text>
-        <Text style={[styles.emptySub, { color: theme.textMuted }]}>
-          Weekly plans need a child profile so each meal is tied to a school.
-          Add one from the Account tab to get started.
-        </Text>
-        <TouchableOpacity
-          style={[styles.primaryBtn, { backgroundColor: theme.primary, marginTop: 20 }]}
-          onPress={() => router.push("/(app)/account")}
-        >
-          <Text style={[styles.primaryBtnText, { color: theme.textOnPrimary }]}>
-            Go to Account
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <Screen>
+        <SafeAreaView style={{ flex: 1 }}>
+          <EmptyState
+            icon="people-outline"
+            title="Add an eater first"
+            message="Weekly plans need an eater profile so each meal is tied to a school. Add one from the Account tab."
+            actionLabel="Go to Account"
+            onAction={() => router.push("/(app)/account")}
+          />
+        </SafeAreaView>
+      </Screen>
     );
   }
 
+  const progress = weekdaySlots.length > 0 ? Math.min(1, childPlanCount / weekdaySlots.length) : 0;
+  const activeFirstName = activeChild?.studentName.trim().split(/\s+/)[0];
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.dark }]}>
-      <SafeAreaView>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} accessibilityLabel="Back to home">
-            <Ionicons name="chevron-back" size={28} color={theme.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        {/* Header */}
+        <View style={s.header}>
+          <Eyebrow>Meal planning</Eyebrow>
+          <Text style={[s.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
             Plan the week
           </Text>
-          <View style={{ width: 28 }} />
+          {weekdaySlots.length > 0 ? (
+            <>
+              <View style={[s.track, { backgroundColor: theme.divider }]}>
+                <View
+                  style={[s.fill, { backgroundColor: theme.primary, width: `${progress * 100}%` }]}
+                />
+              </View>
+              <Text style={[s.progressText, { color: theme.textSecondary }]}>
+                {childPlanCount} of {weekdaySlots.length} day{weekdaySlots.length === 1 ? "" : "s"}{" "}
+                planned{activeFirstName ? ` for ${activeFirstName}` : ""}
+              </Text>
+            </>
+          ) : null}
         </View>
-      </SafeAreaView>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-          Pick a meal for each weekday. Tap &quot;Checkout the week&quot; to pay
-          for all of them in one go.
-        </Text>
-
-        {/* Child picker — chips */}
-        {data.children.length > 1 && (
+        {/* Eater chips */}
+        {data.children.length > 1 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipRow}
+            contentContainerStyle={s.chipRow}
           >
             {data.children.map((c) => {
-              const active = c.id === activeChildId;
+              const on = c.id === activeChildId;
               return (
                 <TouchableOpacity
                   key={c.id}
                   onPress={() => setSelectedChildId(c.id)}
                   style={[
-                    styles.chip,
-                    active
-                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                      : { backgroundColor: theme.surface, borderColor: theme.surfaceElevated },
+                    s.chip,
+                    {
+                      backgroundColor: on ? theme.primary : theme.surface,
+                      borderColor: on ? theme.primary : theme.border,
+                    },
                   ]}
-                  accessibilityState={{ selected: active }}
+                  accessibilityState={{ selected: on }}
                 >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      { color: active ? theme.textOnPrimary : theme.textPrimary },
-                    ]}
-                  >
-                    {c.studentName}
+                  <Text style={[s.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                    {c.studentName.trim().split(/\s+/)[0]}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
-        )}
+        ) : null}
 
-        {/* Weekday slots — only rendered for weekdays the restaurant has
-            actually scheduled. Empty state below covers "this restaurant
-            doesn't have any upcoming dates" / "no children yet". */}
-        {weekdaySlots.length === 0 ? (
-          <View style={[styles.noDatesBox, { backgroundColor: theme.surface, borderColor: theme.surfaceElevated }]}>
-            <Text style={[styles.noDatesTitle, { color: theme.textPrimary }]}>
-              No upcoming delivery dates
-            </Text>
-            <Text style={[styles.noDatesSub, { color: theme.textMuted }]}>
-              {activeChild
-                ? `${activeChild.schoolName} doesn't have any open delivery dates this week. Check back soon.`
-                : "Pick a child to see their school's schedule."}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.slotList}>
-            {weekdaySlots.map(({ weekday: w, date, plan }) => {
-              const item = plan
-                ? date.menuItems.find((m) => m.id === plan.menuItemId)
-                : null;
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+          {weekdaySlots.length === 0 ? (
+            <Card style={s.noDates}>
+              <Ionicons name="calendar-outline" size={30} color={theme.textMuted} />
+              <Text style={[s.noDatesTitle, { color: theme.textPrimary }]}>
+                No upcoming delivery dates
+              </Text>
+              <Text style={[s.noDatesSub, { color: theme.textMuted }]}>
+                {activeChild
+                  ? `${activeChild.schoolName} doesn't have open dates this week. Check back soon.`
+                  : "Pick an eater to see their schedule."}
+              </Text>
+            </Card>
+          ) : (
+            weekdaySlots.map(({ weekday: w, date, plan }) => {
+              const item = plan ? date.menuItems.find((m) => m.id === plan.menuItemId) : null;
               return (
                 <TouchableOpacity
                   key={w.num}
+                  activeOpacity={0.85}
                   onPress={() => {
                     if (!activeChildId) return;
                     Haptics.selectionAsync().catch(() => {});
                     setPickerOpen({ weekday: w.num, childId: activeChildId });
                   }}
-                  style={[
-                    styles.slotCard,
-                    {
-                      backgroundColor: theme.surface,
-                      borderColor: plan ? theme.primary : theme.surfaceElevated,
-                    },
-                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    plan ? `${w.long}: ${item?.name ?? plan.menuItemName}` : `Add ${w.long} meal`
+                  }
                 >
-                  <View style={[styles.slotDay, { backgroundColor: theme.dark }]}>
-                    <Text style={[styles.slotDayLabel, { color: theme.primary }]}>
-                      {w.label}
-                    </Text>
-                  </View>
-                  <View style={styles.slotBody}>
-                    {item ? (
-                      <>
-                        <Text
-                          style={[styles.slotItemName, { color: theme.textPrimary }]}
-                          numberOfLines={1}
-                        >
-                          {item.name}
+                  {plan ? (
+                    <Card style={s.slot}>
+                      <View style={[s.dayBadge, { backgroundColor: theme.dark }]}>
+                        <Text style={[s.dayBadgeText, { color: theme.primary }]}>{w.label}</Text>
+                      </View>
+                      <FoodImage uri={item?.imageUrl} seed={item?.id ?? plan.menuItemId} size={46} radius={11} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.slotName, { color: theme.textPrimary }]} numberOfLines={1}>
+                          {item?.name ?? plan.menuItemName}
                         </Text>
-                        <Text style={[styles.slotPrice, { color: theme.primary }]}>
-                          {formatPrice(item.basePriceCents)}
+                        <Text style={[s.slotPrice, { color: theme.textSecondary }]}>
+                          {item ? formatPrice(item.basePriceCents) : "Tap to update"}
                         </Text>
-                      </>
-                    ) : (
-                      <Text style={[styles.slotPlaceholder, { color: theme.textSecondary }]}>
-                        Tap to add a meal
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                          deleteMutation.mutate(plan.id);
+                        }}
+                        style={s.removeBtn}
+                        accessibilityLabel={`Remove ${w.long} meal`}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close-circle" size={22} color={theme.textMuted} />
+                      </TouchableOpacity>
+                    </Card>
+                  ) : (
+                    <View style={[s.slotEmpty, { borderColor: theme.accent }]}>
+                      <View style={[s.dayBadge, { backgroundColor: `${theme.accent}1a` }]}>
+                        <Text style={[s.dayBadgeText, { color: theme.accent }]}>{w.label}</Text>
+                      </View>
+                      <Text style={[s.slotEmptyText, { color: theme.accent }]}>
+                        Add {w.long}&apos;s meal
                       </Text>
-                    )}
-                  </View>
-                  {plan && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                        deleteMutation.mutate(plan.id);
-                      }}
-                      style={styles.slotClearBtn}
-                      accessibilityLabel={`Remove ${w.long} meal`}
-                    >
-                      <Ionicons name="close-circle" size={22} color={theme.textMuted} />
-                    </TouchableOpacity>
+                      <Ionicons
+                        name="add-circle-outline"
+                        size={20}
+                        color={theme.accent}
+                        style={{ marginRight: 14 }}
+                      />
+                    </View>
                   )}
                 </TouchableOpacity>
               );
-            })}
-          </View>
-        )}
+            })
+          )}
+          <View style={{ height: 8 }} />
+        </ScrollView>
 
-        <View style={{ height: 16 }} />
-      </ScrollView>
-
-      {/* Sticky checkout footer */}
-      {activePlanCount > 0 && (
-        <SafeAreaView style={[styles.footer, { backgroundColor: theme.dark, borderTopColor: theme.surface }]}>
-          <View style={styles.footerInner}>
+        {/* Sticky checkout footer */}
+        {activePlanCount > 0 ? (
+          <View style={[s.footer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
             <View>
-              <Text style={[styles.footerLabel, { color: theme.textMuted }]}>
-                {activePlanCount} meal{activePlanCount !== 1 ? "s" : ""} this week
+              <Text style={[s.footerLabel, { color: theme.textMuted }]}>
+                {activePlanCount} MEAL{activePlanCount === 1 ? "" : "S"}
               </Text>
-              <Text style={[styles.footerTotal, { color: theme.textPrimary }]}>
+              <Text style={[s.footerTotal, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
                 {formatPrice(totalCents)}
               </Text>
             </View>
-            <TouchableOpacity
-              style={[styles.checkoutBtn, { backgroundColor: theme.primary }]}
+            <PrimaryButton
+              label="Checkout the week"
               onPress={handleCheckout}
-              disabled={submitting}
-              accessibilityLabel={`Checkout the week, ${formatPrice(totalCents)}`}
-            >
-              {submitting ? (
-                <ActivityIndicator color={theme.textOnPrimary} />
-              ) : (
-                <Text style={[styles.checkoutBtnText, { color: theme.textOnPrimary }]}>
-                  Checkout the week
-                </Text>
-              )}
-            </TouchableOpacity>
+              loading={submitting}
+              style={{ flex: 1 }}
+            />
           </View>
-        </SafeAreaView>
-      )}
+        ) : null}
+      </SafeAreaView>
 
-      {/* Item picker modal */}
-      {pickerOpen && (
+      {pickerOpen ? (
         <ItemPickerModal
           deliveryDate={
-            weekdaySlots.find((s) => s.weekday.num === pickerOpen.weekday)?.date ?? null
+            weekdaySlots.find((slot) => slot.weekday.num === pickerOpen.weekday)?.date ?? null
           }
           onClose={() => setPickerOpen(null)}
           onPick={(item, size, choice, additions, removals) => {
@@ -415,8 +368,8 @@ export default function WeeklyPlanScreen() {
             });
           }}
         />
-      )}
-    </View>
+      ) : null}
+    </Screen>
   );
 }
 
@@ -429,9 +382,16 @@ function ItemPickerModal({
 }: {
   deliveryDate: WeeklyDeliveryDate | null;
   onClose: () => void;
-  onPick: (item: MenuItem, size?: string, choice?: string, additions?: string[], removals?: string[]) => void;
+  onPick: (
+    item: MenuItem,
+    size?: string,
+    choice?: string,
+    additions?: string[],
+    removals?: string[],
+  ) => void;
 }) {
   const theme = useTheme();
+  const m = modalStyles(theme);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
@@ -439,28 +399,25 @@ function ItemPickerModal({
   const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
 
   if (!deliveryDate) return null;
+
+  // ── Item list ──────────────────────────────────────────────────────────────
   if (!selectedItem) {
     return (
       <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-        <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
-          <View style={modalStyles.handleRow}>
-            <Text
-              style={[
-                modalStyles.title,
-                { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-              ]}
-            >
+        <View style={[m.container, { backgroundColor: theme.dark }]}>
+          <View style={m.handleRow}>
+            <Text style={[m.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
               Pick a meal
             </Text>
-            <TouchableOpacity onPress={onClose} accessibilityLabel="Close picker">
-              <Ionicons name="close" size={24} color={theme.textSecondary} />
+            <TouchableOpacity onPress={onClose} accessibilityLabel="Close picker" hitSlop={8}>
+              <Ionicons name="close" size={22} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
-
-          <ScrollView contentContainerStyle={modalStyles.list}>
-            {deliveryDate!.menuItems.map((item) => (
+          <ScrollView contentContainerStyle={m.list}>
+            {deliveryDate.menuItems.map((item) => (
               <TouchableOpacity
                 key={item.id}
+                activeOpacity={0.85}
                 onPress={() => {
                   setSelectedItem(item);
                   setSelectedSize(item.sizes?.[0]?.name ?? null);
@@ -468,39 +425,25 @@ function ItemPickerModal({
                   setSelectedAdditions([]);
                   setSelectedRemovals([]);
                 }}
-                style={[modalStyles.itemCard, { backgroundColor: theme.surface }]}
-                activeOpacity={0.8}
-                accessibilityLabel={`Select ${item.name}`}
                 accessibilityRole="button"
+                accessibilityLabel={`Select ${item.name}`}
               >
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={modalStyles.itemImage} />
-                ) : (
-                  <View
-                    style={[
-                      modalStyles.itemImage,
-                      { backgroundColor: theme.dark, alignItems: "center", justifyContent: "center" },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 28 }}>🍽️</Text>
-                  </View>
-                )}
-                <View style={modalStyles.itemBody}>
-                  <Text style={[modalStyles.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
-                    {item.name}
-                  </Text>
-                  {item.description && (
-                    <Text
-                      style={[modalStyles.itemDesc, { color: theme.textSecondary }]}
-                      numberOfLines={2}
-                    >
-                      {item.description}
+                <Card style={m.itemCard}>
+                  <FoodImage uri={item.imageUrl} seed={item.id} size={64} radius={12} />
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={[m.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
+                      {item.name}
                     </Text>
-                  )}
-                  <Text style={[modalStyles.itemPrice, { color: theme.primary }]}>
-                    {formatPrice(item.basePriceCents)}
-                  </Text>
-                </View>
+                    {item.description ? (
+                      <Text style={[m.itemDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    ) : null}
+                    <Text style={[m.itemPrice, { color: theme.primary }]}>
+                      {formatPrice(item.basePriceCents)}
+                    </Text>
+                  </View>
+                </Card>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -509,81 +452,66 @@ function ItemPickerModal({
     );
   }
 
-  // Customization screen for selected item
+  // ── Customize ──────────────────────────────────────────────────────────────
   const sizes = selectedItem.sizes ?? [];
   const requiredChoices = selectedItem.requiredChoices ?? [];
   const hasSize = sizes.length > 0;
   const hasRequiredChoice = requiredChoices.length > 0;
-
-  const additions = selectedItem.options.filter((o) => o.optionType === "ADD_ON" || o.optionType === "ADD");
-  const removals = selectedItem.options.filter((o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE");
-
+  const additions = selectedItem.options.filter(
+    (o) => o.optionType === "ADD_ON" || o.optionType === "ADD",
+  );
+  const removals = selectedItem.options.filter(
+    (o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE",
+  );
   const extraCents = additions
     .filter((o) => selectedAdditions.includes(o.name))
-    .reduce((s, o) => s + o.priceDeltaCents, 0);
-
-  const resolvedBaseCents = hasSize
-    ? (sizes.find((s) => s.name === selectedSize) ?? sizes[0]).priceCents
+    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
+  const resolvedBase = hasSize
+    ? (sizes.find((sz) => sz.name === selectedSize) ?? sizes[0]).priceCents
     : selectedItem.basePriceCents;
-  const totalCents = resolvedBaseCents + extraCents;
-
-  const canConfirm = (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
+  const total = resolvedBase + extraCents;
+  const canConfirm =
+    (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
 
   function toggleAddition(name: string) {
-    setSelectedAdditions((prev) =>
-      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]
-    );
+    setSelectedAdditions((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
   }
-
   function toggleRemoval(name: string) {
-    setSelectedRemovals((prev) =>
-      prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]
-    );
-  }
-
-  function pickChoice(name: string) {
-    setSelectedChoice((prev) => (prev === name ? null : name));
-    Haptics.selectionAsync().catch(() => {});
+    setSelectedRemovals((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
   }
 
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
-        <View style={modalStyles.handleRow}>
-          <TouchableOpacity onPress={() => setSelectedItem(null)} accessibilityLabel="Back to item list">
+      <View style={[m.container, { backgroundColor: theme.dark }]}>
+        <View style={m.handleRow}>
+          <TouchableOpacity onPress={() => setSelectedItem(null)} accessibilityLabel="Back to list" hitSlop={8}>
             <Ionicons name="chevron-back" size={24} color={theme.textSecondary} />
           </TouchableOpacity>
-          <Text
-            style={[
-              modalStyles.title,
-              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-            ]}
-          >
+          <Text style={[m.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
             Customize
           </Text>
-          <TouchableOpacity onPress={onClose} accessibilityLabel="Close picker">
-            <Ionicons name="close" size={24} color={theme.textSecondary} />
+          <TouchableOpacity onPress={onClose} accessibilityLabel="Close picker" hitSlop={8}>
+            <Ionicons name="close" size={22} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={modalStyles.custScroll}>
-          <View style={[modalStyles.custHeader, { backgroundColor: theme.surface }]}>
-            <Text style={[modalStyles.custItemName, { color: theme.textPrimary }]}>
-              {selectedItem.name}
-            </Text>
-            <Text style={[modalStyles.custItemPrice, { color: theme.primary }]}>
-              {formatPrice(totalCents)}
-            </Text>
-          </View>
+        <ScrollView contentContainerStyle={m.custScroll}>
+          <Card style={m.custHeader}>
+            <FoodImage uri={selectedItem.imageUrl} seed={selectedItem.id} size={56} radius={12} />
+            <View style={{ flex: 1 }}>
+              <Text style={[m.custName, { color: theme.textPrimary }]}>{selectedItem.name}</Text>
+              <Text style={[m.custPrice, { color: theme.primary }]}>{formatPrice(total)}</Text>
+            </View>
+          </Card>
 
-          {hasSize && (
-            <View style={modalStyles.custSection}>
-              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
-                Size <Text style={{ color: theme.accent, fontSize: 13, fontWeight: "700" }}>· required</Text>
+          {hasSize ? (
+            <View style={m.section}>
+              <Text style={[m.sectionTitle, { color: theme.textMuted }]}>
+                SIZE <Text style={{ color: theme.accent }}>· required</Text>
               </Text>
-              <View style={modalStyles.custChoiceGrid}>
+              <View style={m.chipGrid}>
                 {sizes.map((sz) => {
-                  const isSelected = selectedSize === sz.name;
+                  const on = selectedSize === sz.name;
                   return (
                     <TouchableOpacity
                       key={sz.id}
@@ -592,20 +520,19 @@ function ItemPickerModal({
                         Haptics.selectionAsync().catch(() => {});
                       }}
                       style={[
-                        modalStyles.custChoiceChip,
+                        m.choiceChip,
                         {
-                          backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
-                          borderColor: isSelected ? theme.primary : theme.border,
+                          backgroundColor: on ? theme.primary : theme.surface,
+                          borderColor: on ? theme.primary : theme.border,
                         },
                       ]}
-                      accessibilityLabel={`${sz.name}, ${formatPrice(sz.priceCents)}`}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: isSelected }}
+                      accessibilityState={{ checked: on }}
                     >
-                      <Text style={[modalStyles.custChoiceText, { color: isSelected ? theme.textOnPrimary : theme.textPrimary }]}>
+                      <Text style={[m.choiceText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
                         {sz.name}
                       </Text>
-                      <Text style={[modalStyles.custSizePrice, { color: isSelected ? theme.textOnPrimary : theme.textSecondary }]}>
+                      <Text style={[m.sizePrice, { color: on ? theme.textOnPrimary : theme.textSecondary }]}>
                         {formatPrice(sz.priceCents)}
                       </Text>
                     </TouchableOpacity>
@@ -613,32 +540,34 @@ function ItemPickerModal({
                 })}
               </View>
             </View>
-          )}
+          ) : null}
 
-          {hasRequiredChoice && (
-            <View style={modalStyles.custSection}>
-              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
-                Pick one <Text style={{ color: theme.accent, fontSize: 13, fontWeight: "700" }}>· required</Text>
+          {hasRequiredChoice ? (
+            <View style={m.section}>
+              <Text style={[m.sectionTitle, { color: theme.textMuted }]}>
+                PICK ONE <Text style={{ color: theme.accent }}>· required</Text>
               </Text>
-              <View style={modalStyles.custChoiceGrid}>
+              <View style={m.chipGrid}>
                 {requiredChoices.map((name) => {
-                  const isSelected = selectedChoice === name;
+                  const on = selectedChoice === name;
                   return (
                     <TouchableOpacity
                       key={name}
-                      onPress={() => pickChoice(name)}
+                      onPress={() => {
+                        setSelectedChoice((p) => (p === name ? null : name));
+                        Haptics.selectionAsync().catch(() => {});
+                      }}
                       style={[
-                        modalStyles.custChoiceChip,
+                        m.choiceChip,
                         {
-                          backgroundColor: isSelected ? theme.primary : theme.surfaceElevated,
-                          borderColor: isSelected ? theme.primary : theme.border,
+                          backgroundColor: on ? theme.primary : theme.surface,
+                          borderColor: on ? theme.primary : theme.border,
                         },
                       ]}
-                      accessibilityLabel={name}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: isSelected }}
+                      accessibilityState={{ checked: on }}
                     >
-                      <Text style={[modalStyles.custChoiceText, { color: isSelected ? theme.textOnPrimary : theme.textPrimary }]}>
+                      <Text style={[m.choiceText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
                         {name}
                       </Text>
                     </TouchableOpacity>
@@ -646,248 +575,183 @@ function ItemPickerModal({
                 })}
               </View>
             </View>
-          )}
+          ) : null}
 
-          {additions.length > 0 && (
-            <View style={modalStyles.custSection}>
-              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
-                Add-ons
-              </Text>
-              {additions.map((opt) => (
-                <TouchableOpacity
-                  key={opt.id}
-                  onPress={() => toggleAddition(opt.name)}
-                  style={modalStyles.custOptionRow}
-                  accessibilityLabel={opt.name}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selectedAdditions.includes(opt.name) }}
-                >
-                  <View style={[
-                    modalStyles.checkbox,
-                    selectedAdditions.includes(opt.name) && { backgroundColor: theme.primary, borderColor: theme.primary },
-                  ]}>
-                    {selectedAdditions.includes(opt.name) && (
-                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
-                    )}
-                  </View>
-                  <Text style={[modalStyles.custOptionName, { color: theme.textPrimary }]}>{opt.name}</Text>
-                  {opt.priceDeltaCents > 0 && (
-                    <Text style={[modalStyles.custOptionPrice, { color: theme.textSecondary }]}>
-                      +{formatPrice(opt.priceDeltaCents)}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              ))}
+          {additions.length > 0 ? (
+            <View style={m.section}>
+              <Text style={[m.sectionTitle, { color: theme.textMuted }]}>ADD-ONS</Text>
+              {additions.map((opt) => {
+                const on = selectedAdditions.includes(opt.name);
+                return (
+                  <TouchableOpacity key={opt.id} onPress={() => toggleAddition(opt.name)} style={m.optRow}>
+                    <View
+                      style={[
+                        m.checkbox,
+                        { borderColor: theme.border },
+                        on && { backgroundColor: theme.primary, borderColor: theme.primary },
+                      ]}
+                    >
+                      {on ? <Ionicons name="checkmark" size={13} color={theme.textOnPrimary} /> : null}
+                    </View>
+                    <Text style={[m.optName, { color: theme.textPrimary }]}>{opt.name}</Text>
+                    {opt.priceDeltaCents > 0 ? (
+                      <Text style={[m.optPrice, { color: theme.textSecondary }]}>
+                        +{formatPrice(opt.priceDeltaCents)}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          )}
+          ) : null}
 
-          {removals.length > 0 && (
-            <View style={modalStyles.custSection}>
-              <Text style={[modalStyles.custSectionTitle, { color: theme.textMuted }]}>
-                Remove
-              </Text>
-              {removals.map((opt) => (
-                <TouchableOpacity
-                  key={opt.id}
-                  onPress={() => toggleRemoval(opt.name)}
-                  style={modalStyles.custOptionRow}
-                  accessibilityLabel={opt.name}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selectedRemovals.includes(opt.name) }}
-                >
-                  <View style={[
-                    modalStyles.checkbox,
-                    selectedRemovals.includes(opt.name) && { backgroundColor: theme.primary, borderColor: theme.primary },
-                  ]}>
-                    {selectedRemovals.includes(opt.name) && (
-                      <Ionicons name="checkmark" size={14} color={theme.textOnPrimary} />
-                    )}
-                  </View>
-                  <Text style={[modalStyles.custOptionName, { color: theme.textPrimary }]}>{opt.name}</Text>
-                </TouchableOpacity>
-              ))}
+          {removals.length > 0 ? (
+            <View style={m.section}>
+              <Text style={[m.sectionTitle, { color: theme.textMuted }]}>REMOVE</Text>
+              {removals.map((opt) => {
+                const on = selectedRemovals.includes(opt.name);
+                return (
+                  <TouchableOpacity key={opt.id} onPress={() => toggleRemoval(opt.name)} style={m.optRow}>
+                    <View
+                      style={[
+                        m.checkbox,
+                        { borderColor: theme.border },
+                        on && { backgroundColor: theme.primary, borderColor: theme.primary },
+                      ]}
+                    >
+                      {on ? <Ionicons name="checkmark" size={13} color={theme.textOnPrimary} /> : null}
+                    </View>
+                    <Text style={[m.optName, { color: theme.textPrimary }]}>{opt.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          )}
+          ) : null}
         </ScrollView>
 
-        <SafeAreaView style={[modalStyles.custFooter, { backgroundColor: theme.dark, borderTopColor: theme.surface }]}>
-          <TouchableOpacity
-            style={[
-              modalStyles.confirmBtn,
-              {
-                backgroundColor: canConfirm ? theme.primary : theme.surfaceElevated,
-                opacity: canConfirm ? 1 : 0.7,
-              },
-            ]}
-            onPress={() => onPick(selectedItem, selectedSize ?? undefined, selectedChoice ?? undefined, selectedAdditions, selectedRemovals)}
+        <SafeAreaView style={[m.custFooter, { backgroundColor: theme.dark, borderTopColor: theme.border }]}>
+          <PrimaryButton
+            label={canConfirm ? `Confirm — ${formatPrice(total)}` : "Pick the required options above"}
+            onPress={() =>
+              onPick(
+                selectedItem,
+                selectedSize ?? undefined,
+                selectedChoice ?? undefined,
+                selectedAdditions,
+                selectedRemovals,
+              )
+            }
             disabled={!canConfirm}
-            accessibilityRole="button"
-            accessibilityLabel={!canConfirm
-              ? "Pick required options above"
-              : `Confirm, ${formatPrice(totalCents)}`}
-            accessibilityState={{ disabled: !canConfirm }}
-          >
-            <Text
-              style={[
-                modalStyles.confirmText,
-                { color: canConfirm ? theme.textOnPrimary : theme.textMuted },
-              ]}
-            >
-              {!canConfirm
-                ? "Pick required options above"
-                : `Confirm — ${formatPrice(totalCents)}`}
-            </Text>
-          </TouchableOpacity>
+          />
         </SafeAreaView>
       </View>
     </Modal>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12 },
-  errorText: { fontSize: 15 },
-  retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
-  retryText: { fontWeight: "600" },
+const styles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
+    header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 4 },
+    title: { fontSize: 25, fontWeight: "600", letterSpacing: -0.5, marginTop: 1 },
+    track: { height: 6, borderRadius: 99, marginTop: 10, overflow: "hidden" },
+    fill: { height: 6, borderRadius: 99 },
+    progressText: { fontSize: 12, marginTop: 6 },
 
-  emptyIcon: { fontSize: 56 },
-  emptyTitle: { fontSize: 22, fontWeight: "800", textAlign: "center" },
-  emptySub: { fontSize: 15, lineHeight: 22, textAlign: "center" },
-  primaryBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  primaryBtnText: { fontSize: 15, fontWeight: "700" },
+    chipRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
+    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
+    chipText: { fontSize: 13, fontWeight: "600" },
 
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerTitle: { fontSize: 18, fontWeight: "800", letterSpacing: -0.3 },
+    scroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
 
-  scroll: { paddingHorizontal: 16, paddingBottom: 140, gap: 12 },
-  subtitle: { fontSize: 15, lineHeight: 21 },
+    noDates: { padding: 22, alignItems: "center", gap: 6 },
+    noDatesTitle: { fontSize: 15, fontWeight: "700", marginTop: 2 },
+    noDatesSub: { fontSize: 13, textAlign: "center", lineHeight: 19 },
 
-  chipRow: { gap: 8, paddingVertical: 4, flexDirection: "row" },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 100,
-    borderWidth: 1,
-  },
-  chipText: { fontSize: 13, fontWeight: "600" },
+    slot: { flexDirection: "row", alignItems: "center", gap: 11, padding: 10 },
+    slotEmpty: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 11,
+      padding: 10,
+      borderRadius: 18,
+      borderWidth: 1.5,
+      borderStyle: "dashed",
+    },
+    dayBadge: {
+      width: 46,
+      borderRadius: 11,
+      paddingVertical: 13,
+      alignItems: "center",
+    },
+    dayBadgeText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+    slotName: { fontSize: 14, fontWeight: "700" },
+    slotPrice: { fontSize: 12.5, marginTop: 2 },
+    slotEmptyText: { flex: 1, fontSize: 13.5, fontWeight: "700" },
+    removeBtn: { paddingHorizontal: 8, paddingVertical: 8 },
 
-  slotList: { gap: 10 },
-  noDatesBox: {
-    padding: 20,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-  },
-  noDatesTitle: { fontSize: 15, fontWeight: "700" },
-  noDatesSub: { fontSize: 15, lineHeight: 21, textAlign: "center" },
-  slotCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1.5,
-  },
-  slotDay: {
-    width: 56,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 18,
-  },
-  slotDayLabel: {
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
-  },
-  slotBody: { flex: 1, paddingHorizontal: 14, paddingVertical: 12, gap: 3 },
-  slotItemName: { fontSize: 14, fontWeight: "700" },
-  slotPrice: { fontSize: 13, fontWeight: "600" },
-  slotPlaceholder: { fontSize: 13, fontStyle: "italic" },
-  slotClearBtn: { paddingHorizontal: 14, paddingVertical: 18 },
+    footer: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 8,
+      borderTopWidth: 1,
+    },
+    footerLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 1 },
+    footerTotal: { fontSize: 19, fontWeight: "600", marginTop: 1 },
+  });
 
-  footer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: 1,
-  },
-  footerInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  footerLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  footerTotal: { fontSize: 22, fontWeight: "800", letterSpacing: -0.3 },
-  checkoutBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 12,
-    minWidth: 160,
-    alignItems: "center",
-  },
-  checkoutBtnText: { fontSize: 15, fontWeight: "700" },
-});
+const modalStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    container: { flex: 1 },
+    handleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 20,
+      paddingTop: 16,
+      paddingBottom: 12,
+    },
+    title: { fontSize: 19, fontWeight: "600", letterSpacing: -0.3 },
+    list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
+    itemCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10 },
+    itemName: { fontSize: 14, fontWeight: "700" },
+    itemDesc: { fontSize: 12, lineHeight: 16 },
+    itemPrice: { fontSize: 14, fontWeight: "700", marginTop: 1 },
 
-const modalStyles = StyleSheet.create({
-  container: { flex: 1 },
-  handleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 12,
-  },
-  title: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
-  itemCard: {
-    flexDirection: "row",
-    borderRadius: 14,
-    overflow: "hidden",
-  },
-  itemImage: { width: 80, height: 80 },
-  itemBody: { flex: 1, padding: 12, gap: 3 },
-  itemName: { fontSize: 15, fontWeight: "700" },
-  itemDesc: { fontSize: 13, lineHeight: 18 },
-  itemPrice: { fontSize: 15, fontWeight: "700", marginTop: 2 },
+    custScroll: { paddingHorizontal: 16, paddingBottom: 110, gap: 16 },
+    custHeader: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, marginTop: 4 },
+    custName: { fontSize: 16, fontWeight: "700" },
+    custPrice: { fontSize: 18, fontWeight: "700", marginTop: 3 },
 
-  // Customization screen styles
-  custScroll: { paddingHorizontal: 16, paddingBottom: 100, gap: 16 },
-  custHeader: { borderRadius: 14, padding: 16, gap: 8, marginTop: 12 },
-  custItemName: { fontSize: 18, fontWeight: "700" },
-  custItemPrice: { fontSize: 20, fontWeight: "700", marginTop: 4 },
-  custSection: { gap: 8 },
-  custSectionTitle: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
-  custChoiceGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  custChoiceChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, borderWidth: 1.5, flexDirection: "row", alignItems: "center", gap: 8 },
-  custChoiceText: { fontSize: 15, fontWeight: "600" },
-  custSizePrice: { fontSize: 13, fontWeight: "500" },
-  custOptionRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-  custOptionName: { flex: 1, fontSize: 15 },
-  custOptionPrice: { fontSize: 14 },
-  custFooter: { paddingHorizontal: 20, paddingBottom: 8, borderTopWidth: 1 },
-  confirmBtn: { borderRadius: 14, paddingVertical: 15, alignItems: "center" },
-  confirmText: { fontSize: 17, fontWeight: "700" },
-});
+    section: { gap: 8 },
+    sectionTitle: { fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
+    chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    choiceChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 1.5,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    choiceText: { fontSize: 14, fontWeight: "600" },
+    sizePrice: { fontSize: 12, fontWeight: "500" },
+    optRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+    checkbox: {
+      width: 22,
+      height: 22,
+      borderRadius: 6,
+      borderWidth: 1.5,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    optName: { flex: 1, fontSize: 14 },
+    optPrice: { fontSize: 13 },
+    custFooter: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8, borderTopWidth: 1 },
+  });
