@@ -165,8 +165,8 @@ const NEUTRAL_THEME: Theme = {
 export function buildTheme(brand: RestaurantBrand | null): Theme {
   if (!brand) return NEUTRAL_THEME;
 
-  const primary = brand.primaryColor ?? NEUTRAL_THEME.primary;
-  const accent = brand.accentColor ?? NEUTRAL_THEME.accent;
+  const primary = NEUTRAL_THEME.primary;
+  const accent = NEUTRAL_THEME.accent;
   const dark = NEUTRAL_THEME.dark;
   const bodyText = brand.bodyTextColor ?? NEUTRAL_THEME.textPrimary;
 
