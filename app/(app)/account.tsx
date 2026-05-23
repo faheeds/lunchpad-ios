@@ -104,7 +104,7 @@ export default function AccountScreen() {
   }
 
   const canSaveChild =
-    !!childName.trim() && !!childGrade.trim() && !!effectiveSchoolId && !addChildMutation.isPending;
+    childName.trim().length >= 2 && !!childGrade.trim() && !!effectiveSchoolId && !addChildMutation.isPending;
 
   return (
     <Screen>

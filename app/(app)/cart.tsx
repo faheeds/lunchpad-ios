@@ -7,7 +7,7 @@
  * minimal manual form.
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -69,6 +69,21 @@ export default function CartScreen() {
   const [editingParent, setEditingParent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // The account query resolves after first render, so the useState
+  // initializers above start empty. Seed the form once when it arrives —
+  // without this the saved name/email never populate (checkout then ships
+  // an empty/too-short parentName the server rejects) and the saved eater
+  // is never pre-selected.
+  const initedRef = useRef(false);
+  useEffect(() => {
+    if (account && !initedRef.current) {
+      initedRef.current = true;
+      if (account.name) setParentName(account.name);
+      if (account.email) setParentEmail(account.email);
+      if (account.children[0]) setSelectedChildId(account.children[0].id);
+    }
+  }, [account]);
+
   const selectedChild = children.find((c) => c.id === selectedChildId);
   const effectiveStudentName = selectedChild?.studentName ?? studentName;
   const effectiveGrade = selectedChild?.grade ?? grade;
@@ -76,10 +91,31 @@ export default function CartScreen() {
   const effParentName = parentName.trim() || account?.name || "";
   const effParentEmail = parentEmail.trim() || account?.email || "";
 
+  // Match the server order schema (lib/validation/order.ts): parentName
+  // and studentName need >= 2 chars, parentEmail must be a real address.
+  const nameOk = effParentName.trim().length >= 2;
+  const emailOk = /^\S+@\S+\.\S+$/.test(effParentEmail.trim());
+  const studentOk = effectiveStudentName.trim().length >= 2;
+  const gradeOk = effectiveGrade.trim().length >= 1;
+
   async function handleCheckout() {
     if (!deliveryDateId || !schoolId || items.length === 0) return;
-    if (!effParentName || !effParentEmail || !effectiveStudentName || !effectiveGrade) {
-      Alert.alert("Missing info", "Please fill in your name, email, and the eater's name and grade.");
+    if (!studentOk) {
+      Alert.alert("Eater needed", "Enter the eater's name (at least 2 characters).");
+      return;
+    }
+    if (!gradeOk) {
+      Alert.alert("Grade needed", "Enter the eater's grade or group.");
+      return;
+    }
+    if (!nameOk) {
+      Alert.alert("Your name", "Enter your full name (at least 2 characters) for the receipt.");
+      setEditingParent(true);
+      return;
+    }
+    if (!emailOk) {
+      Alert.alert("Email needed", "Enter a valid email address for the receipt.");
+      setEditingParent(true);
       return;
     }
     setSubmitting(true);
@@ -322,7 +358,7 @@ export default function CartScreen() {
 
             {/* Parent / receipt */}
             <Card style={s.card}>
-              {editingParent || !effParentName || !effParentEmail ? (
+              {editingParent || !nameOk || !emailOk ? (
                 <>
                   <Eyebrow>Receipt to</Eyebrow>
                   <Labeled label="Your name">
