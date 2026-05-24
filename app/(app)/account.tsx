@@ -59,11 +59,22 @@ export default function AccountScreen() {
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
 
   const schools = useMemo(() => {
-    const map = new Map<string, { id: string; name: string }>();
-    (dates ?? []).forEach((d) => map.set(d.schoolId, { id: d.schoolId, name: d.school.name }));
+    const map = new Map<
+      string,
+      { id: string; name: string; locationType?: "SCHOOL" | "OFFICE" }
+    >();
+    (dates ?? []).forEach((d) =>
+      map.set(d.schoolId, {
+        id: d.schoolId,
+        name: d.school.name,
+        locationType: d.school.locationType,
+      }),
+    );
     return [...map.values()];
   }, [dates]);
   const effectiveSchoolId = selectedSchoolId ?? (schools.length === 1 ? schools[0].id : null);
+  const effectiveSchoolIsOffice =
+    schools.find((sc) => sc.id === effectiveSchoolId)?.locationType === "OFFICE";
 
   const addChildMutation = useMutation({
     mutationFn: () =>
@@ -132,7 +143,10 @@ export default function AccountScreen() {
   }
 
   const canSaveChild =
-    childName.trim().length >= 2 && !!childGrade.trim() && !!effectiveSchoolId && !addChildMutation.isPending;
+    childName.trim().length >= 2 &&
+    (effectiveSchoolIsOffice || !!childGrade.trim()) &&
+    !!effectiveSchoolId &&
+    !addChildMutation.isPending;
 
   return (
     <Screen>
@@ -157,7 +171,7 @@ export default function AccountScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[s.profileName, { color: theme.textPrimary }]}>
-                      {account.name ?? "Parent"}
+                      {account.name ?? "Your account"}
                     </Text>
                     <Text style={[s.profileEmail, { color: theme.textSecondary }]}>
                       {account.email}
@@ -235,7 +249,9 @@ export default function AccountScreen() {
                       {child.studentName}
                     </Text>
                     <Text style={[s.childDetail, { color: theme.textSecondary }]}>
-                      Grade {child.grade} · {child.schoolName}
+                      {child.locationType === "OFFICE"
+                        ? child.schoolName
+                        : `Grade ${child.grade} \u00b7 ${child.schoolName}`}
                     </Text>
                     {child.allergyNotes ? (
                       <View style={s.allergyRow}>
@@ -289,13 +305,15 @@ export default function AccountScreen() {
                     placeholderTextColor={theme.textMuted}
                     autoCapitalize="words"
                   />
-                  <TextInput
-                    style={s.input}
-                    value={childGrade}
-                    onChangeText={setChildGrade}
-                    placeholder="Grade or group (e.g. 3rd)"
-                    placeholderTextColor={theme.textMuted}
-                  />
+                  {effectiveSchoolIsOffice ? null : (
+                    <TextInput
+                      style={s.input}
+                      value={childGrade}
+                      onChangeText={setChildGrade}
+                      placeholder="Grade or group (e.g. 3rd)"
+                      placeholderTextColor={theme.textMuted}
+                    />
+                  )}
                   <TextInput
                     style={s.input}
                     value={childAllergy}

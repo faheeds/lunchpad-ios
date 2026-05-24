@@ -2,6 +2,8 @@ export type School = {
   id: string;
   name: string;
   timezone: string;
+  /** "SCHOOL" or "OFFICE" — drives school-vs-office wording in the app. */
+  locationType?: "SCHOOL" | "OFFICE";
 };
 
 export type MenuOption = {
@@ -115,6 +117,7 @@ export type Child = {
   studentName: string;
   grade: string;
   allergyNotes: string;
+  locationType?: "SCHOOL" | "OFFICE";
 };
 
 export type Parent = {

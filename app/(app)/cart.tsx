@@ -56,6 +56,7 @@ export default function CartScreen() {
   const { data: dates } = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
 
   const deliveryDate = dates?.find((d) => d.id === deliveryDateId);
+  const isOffice = deliveryDate?.school.locationType === "OFFICE";
   const children = account?.children ?? [];
 
   const [selectedChildId, setSelectedChildId] = useState<string | null>(
@@ -96,7 +97,7 @@ export default function CartScreen() {
   const nameOk = effParentName.trim().length >= 2;
   const emailOk = /^\S+@\S+\.\S+$/.test(effParentEmail.trim());
   const studentOk = effectiveStudentName.trim().length >= 2;
-  const gradeOk = effectiveGrade.trim().length >= 1;
+  const gradeOk = isOffice || effectiveGrade.trim().length >= 1;
 
   async function handleCheckout() {
     if (!deliveryDateId || !schoolId || items.length === 0) return;
@@ -310,7 +311,9 @@ export default function CartScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[s.eaterName, { color: theme.textPrimary }]}>
-                      {selectedChild.studentName} · Grade {selectedChild.grade}
+                      {isOffice
+                        ? selectedChild.studentName
+                        : `${selectedChild.studentName} · Grade ${selectedChild.grade}`}
                     </Text>
                     {selectedChild.allergyNotes ? (
                       <View style={s.allergyRow}>
@@ -334,15 +337,17 @@ export default function CartScreen() {
                       autoCapitalize="words"
                     />
                   </Labeled>
-                  <Labeled label="Grade or group">
-                    <TextInput
-                      style={s.input}
-                      value={grade}
-                      onChangeText={setGrade}
-                      placeholder="e.g. 3rd, or a team name"
-                      placeholderTextColor={theme.textMuted}
-                    />
-                  </Labeled>
+                   {isOffice ? null : (
+                    <Labeled label="Grade or group">
+                      <TextInput
+                        style={s.input}
+                        value={grade}
+                        onChangeText={setGrade}
+                        placeholder="e.g. 3rd, or a team name"
+                        placeholderTextColor={theme.textMuted}
+                      />
+                    </Labeled>
+                  )}
                   <Labeled label="Allergy notes (optional)">
                     <TextInput
                       style={s.input}
