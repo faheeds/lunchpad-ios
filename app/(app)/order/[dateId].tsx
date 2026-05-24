@@ -4,7 +4,7 @@
  * A floating cart bar carries the running total to checkout.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -338,6 +338,11 @@ export default function OrderScreen() {
   const theme = useTheme();
   const s = screenStyles(theme);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  // Tracks whether the preselectedItemId param has already opened its
+  // modal. Without this, closing the modal (or adding to cart) sets
+  // selectedItem back to null, which re-triggers the effect below and
+  // immediately reopens the modal — trapping the user.
+  const preselectHandled = useRef(false);
 
   const cartItems = useCart((st) => st.items);
   const cartCount = useCart((st) => st.count());
@@ -350,11 +355,15 @@ export default function OrderScreen() {
   const deliveryDate = allDates?.find((d) => d.id === dateId);
 
   useEffect(() => {
-    if (preselectedItemId && deliveryDate && !selectedItem) {
+    if (preselectHandled.current) return;
+    if (preselectedItemId && deliveryDate) {
       const found = deliveryDate.menuItems.find((i) => i.id === preselectedItemId);
-      if (found) setSelectedItem(found);
+      if (found) {
+        setSelectedItem(found);
+        preselectHandled.current = true;
+      }
     }
-  }, [preselectedItemId, deliveryDate, selectedItem]);
+  }, [preselectedItemId, deliveryDate]);
 
   if (isLoading || !deliveryDate) {
     return (

@@ -32,7 +32,12 @@ import {
 } from "../../lib/api";
 import { formatPrice } from "../../lib/store";
 import { useTheme } from "../../lib/theme";
-import type { MenuItem, WeeklyDeliveryDate, WeeklyPlan } from "../../lib/types";
+import type {
+  MenuItem,
+  WeeklyDeliveryDate,
+  WeeklyPlan,
+  WeeklyPlansBundle,
+} from "../../lib/types";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
@@ -51,6 +56,24 @@ function getWeekdayFromISO(iso: string): number {
   return dow === 0 ? 7 : dow;
 }
 
+/** Per-meal price for a saved plan: the chosen size price (or the
+ *  item's base price when unsized) plus any add-on deltas. */
+function resolvePlanPrice(plan: WeeklyPlan, item: MenuItem | undefined): number {
+  if (!item) return 0;
+  const addOnCost = item.options
+    .filter(
+      (o) =>
+        (o.optionType === "ADD" || o.optionType === "ADD_ON") &&
+        plan.additions.includes(o.name),
+    )
+    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
+  const sizePrice =
+    plan.size && item.sizes
+      ? item.sizes.find((sz) => sz.name === plan.size)?.priceCents
+      : undefined;
+  return (sizePrice ?? item.basePriceCents) + addOnCost;
+}
+
 export default function WeeklyPlanScreen() {
   const router = useRouter();
   const theme = useTheme();
@@ -67,13 +90,66 @@ export default function WeeklyPlanScreen() {
 
   const activeChildId = selectedChildId ?? data?.children[0]?.id ?? null;
 
+  // Both mutations update the React Query cache optimistically so the
+  // slot fills (or clears) the instant the user acts — no waiting on
+  // the POST + refetch round-trip. onError rolls the cache back; the
+  // onSettled invalidate reconciles with the server copy.
   const upsertMutation = useMutation({
     mutationFn: upsertWeeklyPlan,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
+    onMutate: async (vars) => {
+      await queryClient.cancelQueries({ queryKey: ["weekly-plans"] });
+      const prev = queryClient.getQueryData<WeeklyPlansBundle>(["weekly-plans"]);
+      if (prev) {
+        const child = prev.children.find((c) => c.id === vars.parentChildId);
+        const date = child
+          ? prev.deliveryDates.find(
+              (d) =>
+                d.schoolId === child.schoolId &&
+                getWeekdayFromISO(d.deliveryDate) === vars.weekday,
+            )
+          : undefined;
+        const menuItem = date?.menuItems.find((m) => m.id === vars.menuItemId);
+        const optimistic: WeeklyPlan = {
+          id: `optimistic-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+          parentChildId: vars.parentChildId,
+          weekday: vars.weekday,
+          menuItemId: vars.menuItemId,
+          menuItemName: menuItem?.name ?? "",
+          choice: vars.choice ?? null,
+          size: vars.size ?? null,
+          additions: vars.additions ?? [],
+          removals: vars.removals ?? [],
+          isActive: true,
+        };
+        queryClient.setQueryData<WeeklyPlansBundle>(["weekly-plans"], {
+          ...prev,
+          plans: [...prev.plans, optimistic],
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["weekly-plans"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
   });
   const deleteMutation = useMutation({
     mutationFn: deleteWeeklyPlan,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
+    onMutate: async (planId) => {
+      await queryClient.cancelQueries({ queryKey: ["weekly-plans"] });
+      const prev = queryClient.getQueryData<WeeklyPlansBundle>(["weekly-plans"]);
+      if (prev) {
+        queryClient.setQueryData<WeeklyPlansBundle>(["weekly-plans"], {
+          ...prev,
+          plans: prev.plans.filter((p) => p.id !== planId),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _planId, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["weekly-plans"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
   });
 
   const activeChild = data?.children.find((c) => c.id === activeChildId) ?? null;
@@ -87,15 +163,15 @@ export default function WeeklyPlanScreen() {
       return [] as Array<{
         weekday: (typeof ALL_WEEKDAYS)[number];
         date: WeeklyDeliveryDate;
-        plan: WeeklyPlan | null;
+        plans: WeeklyPlan[];
       }>;
     return ALL_WEEKDAYS.flatMap((w) => {
       const date = data.deliveryDates.find(
         (d) => d.schoolId === activeChild.schoolId && getWeekdayFromISO(d.deliveryDate) === w.num,
       );
       if (!date) return [];
-      const plan = childPlans.find((p) => p.weekday === w.num) ?? null;
-      return [{ weekday: w, date, plan }];
+      const plans = childPlans.filter((p) => p.weekday === w.num);
+      return [{ weekday: w, date, plans }];
     });
   }, [data, activeChild, childPlans]);
 
@@ -111,13 +187,7 @@ export default function WeeklyPlanScreen() {
       if (!date) continue;
       const item = date.menuItems.find((m) => m.id === plan.menuItemId);
       if (!item) continue;
-      const addOnCost = item.options
-        .filter(
-          (o) =>
-            (o.optionType === "ADD" || o.optionType === "ADD_ON") && plan.additions.includes(o.name),
-        )
-        .reduce((acc, o) => acc + o.priceDeltaCents, 0);
-      sum += item.basePriceCents + addOnCost;
+      sum += resolvePlanPrice(plan, item);
     }
     return sum;
   }, [data]);
@@ -262,34 +332,35 @@ export default function WeeklyPlanScreen() {
               </Text>
             </Card>
           ) : (
-            weekdaySlots.map(({ weekday: w, date, plan }) => {
-              const item = plan ? date.menuItems.find((m) => m.id === plan.menuItemId) : null;
-              return (
-                <TouchableOpacity
-                  key={w.num}
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    if (!activeChildId) return;
-                    Haptics.selectionAsync().catch(() => {});
-                    setPickerOpen({ weekday: w.num, childId: activeChildId });
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    plan ? `${w.long}: ${item?.name ?? plan.menuItemName}` : `Add ${w.long} meal`
-                  }
-                >
-                  {plan ? (
-                    <Card style={s.slot}>
-                      <View style={[s.dayBadge, { backgroundColor: theme.dark }]}>
-                        <Text style={[s.dayBadgeText, { color: theme.primary }]}>{w.label}</Text>
-                      </View>
-                      <FoodImage uri={item?.imageUrl} seed={item?.id ?? plan.menuItemId} size={46} radius={11} />
+            weekdaySlots.map(({ weekday: w, date, plans }) => (
+              <View key={w.num} style={s.daySlot}>
+                <View style={s.dayHeader}>
+                  <View style={[s.dayChip, { backgroundColor: theme.dark }]}>
+                    <Text style={[s.dayChipText, { color: theme.primary }]}>{w.label}</Text>
+                  </View>
+                  <Text style={[s.dayName, { color: theme.textPrimary }]}>{w.long}</Text>
+                </View>
+                {plans.map((plan) => {
+                  const item = date.menuItems.find((m) => m.id === plan.menuItemId);
+                  const meta = [plan.size, plan.choice].filter(Boolean).join(" \u00b7 ");
+                  const price = formatPrice(resolvePlanPrice(plan, item));
+                  return (
+                    <Card key={plan.id} style={s.planRow}>
+                      <FoodImage
+                        uri={item?.imageUrl}
+                        seed={item?.id ?? plan.menuItemId}
+                        size={44}
+                        radius={10}
+                      />
                       <View style={{ flex: 1 }}>
                         <Text style={[s.slotName, { color: theme.textPrimary }]} numberOfLines={1}>
                           {item?.name ?? plan.menuItemName}
                         </Text>
-                        <Text style={[s.slotPrice, { color: theme.textSecondary }]}>
-                          {item ? formatPrice(item.basePriceCents) : "Tap to update"}
+                        <Text
+                          style={[s.slotPrice, { color: theme.textSecondary }]}
+                          numberOfLines={1}
+                        >
+                          {meta ? `${meta} \u00b7 ${price}` : price}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -298,31 +369,35 @@ export default function WeeklyPlanScreen() {
                           deleteMutation.mutate(plan.id);
                         }}
                         style={s.removeBtn}
-                        accessibilityLabel={`Remove ${w.long} meal`}
+                        accessibilityLabel={`Remove ${item?.name ?? plan.menuItemName} from ${w.long}`}
                         hitSlop={8}
                       >
                         <Ionicons name="close-circle" size={22} color={theme.textMuted} />
                       </TouchableOpacity>
                     </Card>
-                  ) : (
-                    <View style={[s.slotEmpty, { borderColor: theme.accent }]}>
-                      <View style={[s.dayBadge, { backgroundColor: `${theme.accent}1a` }]}>
-                        <Text style={[s.dayBadgeText, { color: theme.accent }]}>{w.label}</Text>
-                      </View>
-                      <Text style={[s.slotEmptyText, { color: theme.accent }]}>
-                        Add {w.long}&apos;s meal
-                      </Text>
-                      <Ionicons
-                        name="add-circle-outline"
-                        size={20}
-                        color={theme.accent}
-                        style={{ marginRight: 14 }}
-                      />
-                    </View>
-                  )}
+                  );
+                })}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    if (!activeChildId) return;
+                    Haptics.selectionAsync().catch(() => {});
+                    setPickerOpen({ weekday: w.num, childId: activeChildId });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    plans.length ? `Add another meal for ${w.long}` : `Add ${w.long} meal`
+                  }
+                >
+                  <View style={[s.addRow, { borderColor: theme.accent }]}>
+                    <Ionicons name="add-circle-outline" size={18} color={theme.accent} />
+                    <Text style={[s.addRowText, { color: theme.accent }]}>
+                      {plans.length ? "Add another meal" : `Add ${w.long}\u2019s meal`}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
-              );
-            })
+              </View>
+            ))
           )}
           <View style={{ height: 8 }} />
         </ScrollView>
@@ -691,6 +766,24 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     slotPrice: { fontSize: 12.5, marginTop: 2 },
     slotEmptyText: { flex: 1, fontSize: 13.5, fontWeight: "700" },
     removeBtn: { paddingHorizontal: 8, paddingVertical: 8 },
+
+    daySlot: { gap: 7 },
+    dayHeader: { flexDirection: "row", alignItems: "center", gap: 9, marginTop: 2 },
+    dayChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
+    dayChipText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+    dayName: { fontSize: 14, fontWeight: "700" },
+    planRow: { flexDirection: "row", alignItems: "center", gap: 11, padding: 10 },
+    addRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+      paddingVertical: 11,
+      borderRadius: 14,
+      borderWidth: 1.5,
+      borderStyle: "dashed",
+    },
+    addRowText: { fontSize: 13, fontWeight: "700" },
 
     footer: {
       flexDirection: "row",
