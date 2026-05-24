@@ -212,3 +212,7 @@ export const createOrder = (data: {
    *  name when the menu item has size variants. */
   items: { menuItemId: string; choice?: string; size?: string; additions?: string[]; removals?: string[] }[];
 }) => apiPost<{ checkoutUrl: string; orderId: string }>("/api/mobile/native/order", data);
+
+/** Permanently deletes the signed-in parent's account (App Store 5.1.1(v)). */
+export const deleteAccount = () =>
+  apiDelete<{ ok: true }>("/api/mobile/native/account");

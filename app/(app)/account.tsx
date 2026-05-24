@@ -18,7 +18,7 @@ import {
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchAccount, fetchOrders, fetchDeliveryDates, addChild } from "../../lib/api";
+import { fetchAccount, fetchOrders, fetchDeliveryDates, addChild, deleteAccount } from "../../lib/api";
 import { signOut } from "../../lib/auth";
 import { formatPrice } from "../../lib/store";
 import { useTheme } from "../../lib/theme";
@@ -101,6 +101,34 @@ export default function AccountScreen() {
         },
       },
     ]);
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Delete account?",
+      "This permanently deletes your account, saved eaters, and weekly plans. Past orders are kept by the lunch provider as records but are no longer linked to you. This can\u2019t be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete account",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteAccount();
+              await signOut();
+              queryClient.clear();
+              await refreshTheme();
+              router.replace("/(auth)");
+            } catch (err) {
+              Alert.alert(
+                "Couldn\u2019t delete account",
+                err instanceof Error ? err.message : "Please try again.",
+              );
+            }
+          },
+        },
+      ],
+    );
   }
 
   const canSaveChild =
@@ -361,6 +389,19 @@ export default function AccountScreen() {
             <Ionicons name="swap-horizontal-outline" size={16} color={theme.textSecondary} />
             <Text style={[s.switchText, { color: theme.textSecondary }]}>Switch lunch program</Text>
           </TouchableOpacity>
+
+          {/* Delete account - required by App Store guideline 5.1.1(v) */}
+          {account ? (
+            <TouchableOpacity
+              style={s.switchBtn}
+              onPress={handleDeleteAccount}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+            >
+              <Ionicons name="trash-outline" size={16} color={theme.danger} />
+              <Text style={[s.switchText, { color: theme.danger }]}>Delete account</Text>
+            </TouchableOpacity>
+          ) : null}
 
           <View style={{ height: 24 }} />
         </ScrollView>
