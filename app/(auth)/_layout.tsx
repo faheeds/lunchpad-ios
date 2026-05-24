@@ -11,6 +11,7 @@ export default function AuthLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="connect" />
       <Stack.Screen name="sign-in" />
     </Stack>
   );

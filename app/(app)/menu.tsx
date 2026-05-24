@@ -1,22 +1,14 @@
 /**
- * Menu tab — browse the restaurant's full menu without committing to a
- * date. Lets curious customers see what's on offer before they have an
- * upcoming-delivery account or have placed any orders.
- *
- * Layout:
- *   - Header with restaurant brand + hero image (if uploaded)
- *   - Section list grouped by category
- *   - Item cards with image, name, description, price, dietary tags
- *   - Tap an item → modal with full description + "Order this item" CTA
- *     that takes the user to the home screen to pick a delivery date
+ * Menu — a genuine browse surface for the operator's full menu.
+ * Dietary filter chips, photo-forward item cards, and an item detail
+ * sheet. Tapping "order" routes to date selection.
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
   SectionList,
-  Image,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -32,7 +24,8 @@ import { fetchMenu } from "../../lib/api";
 import { formatPrice } from "../../lib/store";
 import type { MenuItem } from "../../lib/types";
 import { useTheme } from "../../lib/theme";
-import { BrandMark } from "../../components/BrandMark";
+import { FoodImage } from "../../components/FoodImage";
+import { Screen, Card, Eyebrow, Tag, PrimaryButton, EmptyState } from "../../components/ui";
 
 const DIETARY_LABEL: Record<string, string> = {
   halal: "Halal",
@@ -44,185 +37,190 @@ const DIETARY_LABEL: Record<string, string> = {
   spicy: "Spicy",
 };
 
+const labelFor = (tag: string) => DIETARY_LABEL[tag] ?? tag;
+
 export default function MenuScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const s = styles(theme);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [filter, setFilter] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["menu"],
     queryFn: fetchMenu,
   });
 
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    data?.categories.forEach((c) => c.items.forEach((it) => (it.dietaryTags ?? []).forEach((t) => set.add(t))));
+    return [...set];
+  }, [data]);
+
+  const sections = useMemo(() => {
+    return (data?.categories ?? [])
+      .map((c) => ({
+        title: c.title,
+        data: filter ? c.items.filter((it) => (it.dietaryTags ?? []).includes(filter)) : c.items,
+      }))
+      .filter((sec) => sec.data.length > 0);
+  }, [data, filter]);
+
   if (isLoading) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.dark }]}>
-        <ActivityIndicator color={theme.primary} size="large" />
-      </View>
+      <Screen>
+        <View style={s.center}>
+          <ActivityIndicator color={theme.primary} size="large" />
+        </View>
+      </Screen>
     );
   }
 
   if (isError || !data) {
     return (
-      <View style={[styles.center, { backgroundColor: theme.dark }]}>
-        <Text style={[styles.errorText, { color: theme.danger }]}>
-          Couldn&apos;t load the menu.
-        </Text>
-        <TouchableOpacity
-          onPress={() => refetch()}
-          style={[styles.retryBtn, { backgroundColor: theme.surface }]}
-        >
-          <Text style={[styles.retryText, { color: theme.primary }]}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+      <Screen>
+        <SafeAreaView style={{ flex: 1 }}>
+          <EmptyState
+            icon="cloud-offline-outline"
+            title="Couldn't load the menu"
+            message="Check your connection and try again."
+            actionLabel="Retry"
+            onAction={() => refetch()}
+          />
+        </SafeAreaView>
+      </Screen>
     );
   }
 
-  // SectionList expects each section to expose its rows on `data`, not
-  // `items` (the name we use on the wire). Adapt here once rather than
-  // forking the server contract.
-  const sections = data.categories.map((c) => ({ title: c.title, data: c.items }));
-  const totalItems = data.categories.reduce((sum, s) => sum + s.items.length, 0);
+  const totalItems = data.categories.reduce((sum, c) => sum + c.items.length, 0);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.dark }]}>
-      <SectionList
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={theme.primary}
-          />
-        }
-        ListHeaderComponent={
-          <View style={styles.header}>
-            {/* Hero image — restaurant's uploaded photo with brand overlay.
-                Falls back to a solid brand-color banner when no hero is set. */}
-            <View style={[styles.heroWrap, { backgroundColor: theme.surface }]}>
-              {theme.heroImageUrl ? (
-                <Image
-                  source={{ uri: theme.heroImageUrl }}
-                  style={styles.heroImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <View
-                  style={[styles.heroImage, { backgroundColor: theme.primary }]}
-                />
-              )}
-              <View style={styles.heroOverlay} />
-              <View style={styles.heroContent}>
-                <BrandMark size={40} radius={10} />
-                <Text
-                  style={[
-                    styles.heroTitle,
-                    { color: "#ffffff", fontFamily: theme.fontDisplay },
-                  ]}
-                >
-                  {data.restaurantName}
-                </Text>
-                <Text style={styles.heroSub}>
-                  {totalItems} item{totalItems !== 1 ? "s" : ""} on the menu
-                </Text>
-              </View>
-            </View>
-          </View>
-        }
-        renderSectionHeader={({ section }) => (
-          <View style={[styles.sectionHeader, { backgroundColor: theme.dark }]}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-              ]}
-            >
-              {section.title}
-            </Text>
-            <Text style={[styles.sectionCount, { color: theme.textMuted }]}>
-              {section.data.length} item{section.data.length !== 1 ? "s" : ""}
-            </Text>
-          </View>
-        )}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.itemCard, { backgroundColor: theme.surface }]}
-            onPress={() => setSelectedItem(item)}
-            activeOpacity={0.8}
-            accessibilityLabel={`${item.name}, ${formatPrice(item.basePriceCents)}`}
-            accessibilityRole="button"
-          >
-            {item.imageUrl ? (
-              <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-            ) : (
-              <View style={[styles.itemImage, { backgroundColor: theme.dark }]}>
-                <Text style={{ fontSize: 24 }}>🍽️</Text>
-              </View>
-            )}
-            <View style={styles.itemInfo}>
-              {/* Name + price share row 1 — saves vertical space */}
-              <View style={styles.itemTitleRow}>
-                <Text
-                  style={[styles.itemName, { color: theme.textPrimary }]}
-                  numberOfLines={1}
-                >
-                  {item.name}
-                </Text>
-                <Text style={[styles.itemPrice, { color: theme.primary }]}>
-                  {formatPrice(item.basePriceCents)}
-                </Text>
-              </View>
-              {item.description && (
-                <Text
-                  style={[styles.itemDesc, { color: theme.textSecondary }]}
-                  numberOfLines={2}
-                >
-                  {item.description}
-                </Text>
-              )}
-              {item.dietaryTags && item.dietaryTags.length > 0 && (
-                <View style={styles.tagRow}>
-                  {item.dietaryTags.slice(0, 3).map((tag) => (
-                    <View
-                      key={tag}
-                      style={[
-                        styles.tag,
-                        { backgroundColor: `${theme.primary}22`, borderColor: theme.primary },
-                      ]}
-                    >
-                      <Text style={[styles.tagText, { color: theme.primary }]}>
-                        {DIETARY_LABEL[tag] ?? tag}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          </TouchableOpacity>
-        )}
-        stickySectionHeadersEnabled
-      />
+    <Screen>
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={s.header}>
+          <Text style={[s.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>Menu</Text>
+          <Text style={[s.sub, { color: theme.textMuted }]}>
+            {data.restaurantName} · {totalItems} dish{totalItems === 1 ? "" : "es"}
+          </Text>
+        </View>
 
-      {selectedItem && (
+        {allTags.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.chipRow}
+          >
+            <FilterChip label="All" on={filter === null} onPress={() => setFilter(null)} />
+            {allTags.map((t) => (
+              <FilterChip
+                key={t}
+                label={labelFor(t)}
+                on={filter === t}
+                onPress={() => setFilter(filter === t ? null : t)}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
+
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={s.list}
+          stickySectionHeadersEnabled={false}
+          refreshControl={
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.primary} />
+          }
+          ListEmptyComponent={
+            <View style={{ paddingTop: 48 }}>
+              <EmptyState
+                icon="filter-outline"
+                title="No matches"
+                message="No dishes match that filter. Try another."
+              />
+            </View>
+          }
+          renderSectionHeader={({ section }) => (
+            <View style={s.sectionHead}>
+              <Text style={[s.sectionTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+                {section.title}
+              </Text>
+              <Text style={[s.sectionCount, { color: theme.textMuted }]}>{section.data.length}</Text>
+            </View>
+          )}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setSelectedItem(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name}, ${formatPrice(item.basePriceCents)}`}
+            >
+              <Card style={s.itemCard}>
+                <FoodImage uri={item.imageUrl} seed={item.id} size={66} radius={12} />
+                <View style={{ flex: 1, gap: 3 }}>
+                  <View style={s.itemTitleRow}>
+                    <Text style={[s.itemName, { color: theme.textPrimary }]} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={[s.itemPrice, { color: theme.primary }]}>
+                      {formatPrice(item.basePriceCents)}
+                    </Text>
+                  </View>
+                  {item.description ? (
+                    <Text style={[s.itemDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                      {item.description}
+                    </Text>
+                  ) : null}
+                  {item.dietaryTags && item.dietaryTags.length > 0 ? (
+                    <View style={s.tagRow}>
+                      {item.dietaryTags.slice(0, 3).map((t) => (
+                        <Tag key={t} label={labelFor(t)} />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              </Card>
+            </TouchableOpacity>
+          )}
+        />
+      </SafeAreaView>
+
+      {selectedItem ? (
         <ItemDetailModal
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
           onOrder={() => {
+            const item = selectedItem;
             setSelectedItem(null);
-            router.push({
-              pathname: "/(app)",
-              params: { preselectedItemId: selectedItem.id },
-            });
+            router.push({ pathname: "/(app)", params: { preselectedItemId: item.id } });
           }}
         />
-      )}
-    </View>
+      ) : null}
+    </Screen>
   );
 }
 
-// ── Item detail modal ─────────────────────────────────────────────────────────
+function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      style={{
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 99,
+        borderWidth: 1,
+        backgroundColor: on ? theme.primary : theme.surface,
+        borderColor: on ? theme.primary : theme.border,
+      }}
+    >
+      <Text style={{ fontSize: 12.5, fontWeight: "600", color: on ? theme.textOnPrimary : theme.textPrimary }}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 function ItemDetailModal({
   item,
@@ -234,252 +232,114 @@ function ItemDetailModal({
   onOrder: () => void;
 }) {
   const theme = useTheme();
+  const m = modalStyles(theme);
+  const addOns = item.options.filter((o) => o.optionType === "ADD_ON" || o.optionType === "ADD");
 
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[modalStyles.container, { backgroundColor: theme.dark }]}>
-        <View style={modalStyles.handleRow}>
-          <View style={[modalStyles.handle, { backgroundColor: theme.surfaceElevated }]} />
-          <TouchableOpacity
-            onPress={onClose}
-            style={modalStyles.closeBtn}
-            accessibilityLabel="Close menu item details"
-          >
-            <Ionicons name="close" size={20} color={theme.textSecondary} />
+      <View style={[m.container, { backgroundColor: theme.dark }]}>
+        <View style={m.handleRow}>
+          <View style={{ width: 32 }} />
+          <View style={[m.grabber, { backgroundColor: theme.border }]} />
+          <TouchableOpacity onPress={onClose} accessibilityLabel="Close" hitSlop={8} style={{ width: 32, alignItems: "flex-end" }}>
+            <Ionicons name="close" size={22} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={modalStyles.scroll}>
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={modalStyles.image} />
-          ) : (
-            <View
-              style={[
-                modalStyles.image,
-                { backgroundColor: theme.surface, alignItems: "center", justifyContent: "center" },
-              ]}
-            >
-              <Text style={{ fontSize: 64 }}>🍽️</Text>
-            </View>
-          )}
+        <ScrollView contentContainerStyle={m.scroll}>
+          <FoodImage uri={item.imageUrl} seed={item.id} radius={18} style={m.image} />
 
-          <View style={modalStyles.body}>
-            <View style={modalStyles.titleRow}>
-              <Text
-                style={[
-                  modalStyles.name,
-                  { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-                ]}
-              >
-                {item.name}
-              </Text>
-              <Text style={[modalStyles.price, { color: theme.primary }]}>
-                {formatPrice(item.basePriceCents)}
-              </Text>
-            </View>
-
-            {item.description && (
-              <Text style={[modalStyles.description, { color: theme.textSecondary }]}>
-                {item.description}
-              </Text>
-            )}
-
-            {/* Dietary chips */}
-            {item.dietaryTags && item.dietaryTags.length > 0 && (
-              <View style={modalStyles.chipRow}>
-                {item.dietaryTags.map((tag) => (
-                  <View
-                    key={tag}
-                    style={[
-                      modalStyles.chip,
-                      { backgroundColor: theme.surface, borderColor: theme.primary },
-                    ]}
-                  >
-                    <Text style={[modalStyles.chipText, { color: theme.primary }]}>
-                      {DIETARY_LABEL[tag] ?? tag}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Add-ons preview */}
-            {item.options.some((o) => o.optionType === "ADD" || o.optionType === "ADD_ON") && (
-              <View style={modalStyles.section}>
-                <Text style={[modalStyles.sectionLabel, { color: theme.textMuted }]}>
-                  Available add-ons
-                </Text>
-                {item.options
-                  .filter((o) => o.optionType === "ADD" || o.optionType === "ADD_ON")
-                  .map((o) => (
-                    <View key={o.id} style={modalStyles.optionRow}>
-                      <Text style={[modalStyles.optionName, { color: theme.textSecondary }]}>
-                        + {o.name}
-                      </Text>
-                      {o.priceDeltaCents > 0 && (
-                        <Text style={[modalStyles.optionPrice, { color: theme.textMuted }]}>
-                          +{formatPrice(o.priceDeltaCents)}
-                        </Text>
-                      )}
-                    </View>
-                  ))}
-              </View>
-            )}
+          <View style={m.titleRow}>
+            <Text style={[m.name, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+              {item.name}
+            </Text>
+            <Text style={[m.price, { color: theme.primary }]}>{formatPrice(item.basePriceCents)}</Text>
           </View>
+
+          {item.description ? (
+            <Text style={[m.description, { color: theme.textSecondary }]}>{item.description}</Text>
+          ) : null}
+
+          {item.dietaryTags && item.dietaryTags.length > 0 ? (
+            <View style={m.tagRow}>
+              {item.dietaryTags.map((t) => (
+                <Tag key={t} label={labelFor(t)} />
+              ))}
+            </View>
+          ) : null}
+
+          {addOns.length > 0 ? (
+            <View style={m.section}>
+              <Eyebrow>Available add-ons</Eyebrow>
+              {addOns.map((o) => (
+                <View key={o.id} style={m.optionRow}>
+                  <Text style={[m.optionName, { color: theme.textSecondary }]}>{o.name}</Text>
+                  {o.priceDeltaCents > 0 ? (
+                    <Text style={[m.optionPrice, { color: theme.textMuted }]}>
+                      +{formatPrice(o.priceDeltaCents)}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
         </ScrollView>
 
-        <SafeAreaView style={modalStyles.footer}>
-          <TouchableOpacity
-            style={[modalStyles.orderButton, { backgroundColor: theme.primary }]}
-            onPress={onOrder}
-          >
-            <Text
-              style={[modalStyles.orderButtonText, { color: theme.textOnPrimary }]}
-            >
-              Pick a date to order
-            </Text>
-          </TouchableOpacity>
+        <SafeAreaView style={[m.footer, { backgroundColor: theme.dark, borderTopColor: theme.border }]}>
+          <PrimaryButton label="Choose a date to order" icon="calendar-outline" onPress={onOrder} />
         </SafeAreaView>
       </View>
     </Modal>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+const styles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
+    header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
+    title: { fontSize: 25, fontWeight: "600", letterSpacing: -0.5 },
+    sub: { fontSize: 13, marginTop: 1 },
+    chipRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+    list: { paddingHorizontal: 16, paddingBottom: 24 },
+    sectionHead: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      justifyContent: "space-between",
+      paddingTop: 18,
+      paddingBottom: 8,
+    },
+    sectionTitle: { fontSize: 18, fontWeight: "600", letterSpacing: -0.3 },
+    sectionCount: { fontSize: 12, fontWeight: "700" },
+    itemCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10, marginBottom: 8 },
+    itemTitleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+    itemName: { fontSize: 14.5, fontWeight: "700", flex: 1 },
+    itemPrice: { fontSize: 14, fontWeight: "700" },
+    itemDesc: { fontSize: 12.5, lineHeight: 17 },
+    tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 3 },
+  });
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
-  errorText: { fontSize: 15 },
-  retryBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 10 },
-  retryText: { fontWeight: "600" },
-  list: { paddingBottom: 32 },
-
-  // Header / hero
-  header: { paddingBottom: 8 },
-  heroWrap: { height: 200, overflow: "hidden", position: "relative" },
-  heroImage: { ...StyleSheet.absoluteFillObject },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  heroContent: {
-    position: "absolute",
-    left: 20,
-    right: 20,
-    bottom: 18,
-    gap: 6,
-  },
-  heroTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.5, marginTop: 6 },
-  heroSub: { fontSize: 13, color: "rgba(255,255,255,0.85)", fontWeight: "500" },
-
-  // Section header
-  sectionHeader: {
-    paddingHorizontal: 20,
-    paddingTop: 22,
-    paddingBottom: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-  },
-  sectionTitle: { fontSize: 20, fontWeight: "800", letterSpacing: -0.3 },
-  sectionCount: { fontSize: 13, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.4 },
-
-  // Item card — denser layout: smaller image, name & price on one row,
-  // description + tags below. Halves the card height vs. the earlier design.
-  itemCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginBottom: 8,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  itemImage: {
-    width: 64,
-    height: 64,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  itemInfo: { flex: 1, paddingHorizontal: 12, paddingVertical: 10, gap: 3 },
-  itemTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  itemName: { fontSize: 15, fontWeight: "700", flex: 1 },
-  itemPrice: { fontSize: 15, fontWeight: "700" },
-  itemDesc: { fontSize: 15, lineHeight: 20 },
-  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 2 },
-  tag: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 100,
-    borderWidth: 1,
-  },
-  tagText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
-});
-
-const modalStyles = StyleSheet.create({
-  container: { flex: 1 },
-  handleRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    alignItems: "center",
-  },
-  handle: {
-    position: "absolute",
-    top: 8,
-    left: "50%",
-    marginLeft: -20,
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scroll: { paddingBottom: 100 },
-  image: {
-    width: "100%",
-    aspectRatio: 1,
-    maxHeight: 360,
-  },
-  body: { padding: 20, gap: 14 },
-  titleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-    gap: 12,
-  },
-  name: { fontSize: 24, fontWeight: "800", flex: 1, letterSpacing: -0.4 },
-  price: { fontSize: 20, fontWeight: "800" },
-  description: { fontSize: 15, lineHeight: 22 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100, borderWidth: 1 },
-  chipText: { fontSize: 13, fontWeight: "600" },
-  section: { gap: 8, marginTop: 6 },
-  sectionLabel: { fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
-  optionRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  optionName: { fontSize: 13 },
-  optionPrice: { fontSize: 13 },
-  footer: { paddingHorizontal: 16, paddingBottom: 4, paddingTop: 8 },
-  orderButton: {
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  orderButtonText: { fontSize: 15, fontWeight: "700" },
-});
+const modalStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    container: { flex: 1 },
+    handleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 8,
+    },
+    grabber: { width: 40, height: 4, borderRadius: 2 },
+    scroll: { paddingHorizontal: 20, paddingBottom: 110, gap: 14 },
+    image: { width: "100%", height: 240 },
+    titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 12 },
+    name: { fontSize: 23, fontWeight: "600", flex: 1, letterSpacing: -0.4 },
+    price: { fontSize: 19, fontWeight: "800" },
+    description: { fontSize: 15, lineHeight: 22 },
+    tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+    section: { gap: 8, marginTop: 4 },
+    optionRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
+    optionName: { fontSize: 14 },
+    optionPrice: { fontSize: 14 },
+    footer: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6, borderTopWidth: 1 },
+  });

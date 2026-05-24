@@ -1,223 +1,71 @@
 /**
- * School Code Entry — first screen every parent sees.
- * Enter e.g. "fsskitchen" → validates against the live API → saves to SecureStore.
+ * Welcome — the first screen a new customer sees. Value-first: a warm
+ * full-bleed canvas, the LunchPad promise, and one clear way forward.
+ * Replaces the old code-entry form as the app's cover.
  */
 
-import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Image,
-} from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
 import { useRouter } from "expo-router";
-import { validateSchoolCode, setSchoolCode, setStoredBaseUrl, getJWT } from "../../lib/api";
-import { useRefreshTheme } from "../../lib/theme-context";
 import { useTheme } from "../../lib/theme";
 import { BrandMark } from "../../components/BrandMark";
 
-export default function SchoolCodeScreen() {
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+const CREAM = "#F6F1E6";
+
+export default function WelcomeScreen() {
   const router = useRouter();
-  const refreshTheme = useRefreshTheme();
   const theme = useTheme();
 
-  async function handleContinue() {
-    const trimmed = code.toLowerCase().trim();
-    if (!trimmed) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      const { valid, baseUrl } = await validateSchoolCode(trimmed);
-      if (!valid) {
-        setError("Not found. Try your full URL (e.g. lunch.yourdomain.com) or check with your school.");
-        return;
-      }
-
-      await setSchoolCode(trimmed);
-      if (baseUrl) await setStoredBaseUrl(baseUrl);
-
-      // Refresh the theme so the next screen renders in the new tenant's
-      // brand colors/logo immediately, not after an app restart.
-      await refreshTheme();
-
-      // If already signed in, go straight to app
-      const jwt = await getJWT();
-      if (jwt) {
-        router.replace("/(app)");
-      } else {
-        router.push("/(auth)/sign-in");
-      }
-    } catch {
-      setError("Couldn't connect. Check your internet and try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Theme is neutral on first visit (no tenant connected yet) but tracks
-  // the current tenant if the user comes back here via "Change school".
-
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.dark }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <View style={styles.inner}>
-        {/* Logo + wordmark. BrandMark renders the active restaurant's
-            uploaded logo if present, else the bundled LunchPad icon —
-            no more emoji placeholder. */}
-        <View style={styles.logoContainer}>
-          <BrandMark size={72} radius={18} />
-          <Text
-            style={[
-              styles.appName,
-              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-            ]}
-          >
-            {theme.restaurant?.name ?? "LunchPad"}
-          </Text>
-          <Text style={[styles.tagline, { color: theme.textSecondary }]}>
-            {theme.restaurant ? "Lunch ordering, simplified." : "School lunch, simplified."}
-          </Text>
-        </View>
+    <View style={[styles.fill, { backgroundColor: theme.primary }]}>
+      <SafeAreaView style={styles.fill}>
+        <View style={styles.content}>
+          <View style={{ flex: 1 }} />
 
-        {/* Card */}
-        <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <Text
-            style={[
-              styles.cardTitle,
-              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
-            ]}
-          >
-            Connect to your lunch program
-          </Text>
-          <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>
-            Enter the code or the full address your school or office gave you (e.g. lunch.yourdomain.com).
-          </Text>
+          <View style={styles.brandRow}>
+            <BrandMark size={34} radius={9} />
+            <Text style={[styles.wordmark, { color: CREAM }]}>LUNCHPAD</Text>
+          </View>
 
-          <TextInput
-            style={[
-              styles.input,
-              {
-                backgroundColor: theme.dark,
-                borderColor: theme.border,
-                color: theme.textPrimary,
-              },
-            ]}
-            value={code}
-            onChangeText={(t) => { setCode(t); setError(""); }}
-            placeholder="e.g. lunch.yourschool.com"
-            placeholderTextColor={theme.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-            keyboardType="url"
-            returnKeyType="go"
-            onSubmitEditing={handleContinue}
-          />
-
-          {!!error && <Text style={[styles.errorText, { color: theme.danger }]}>{error}</Text>}
+          <Text style={[styles.headline, { color: CREAM, fontFamily: theme.fontDisplay }]}>
+            Lunch, handled — for the whole week.
+          </Text>
+          <Text style={styles.sub}>
+            Order from your school or office kitchen in a tap.
+          </Text>
 
           <TouchableOpacity
-            style={[
-              styles.button,
-              { backgroundColor: theme.primary },
-              (!code.trim() || loading) && styles.buttonDisabled,
-            ]}
-            onPress={handleContinue}
-            disabled={!code.trim() || loading}
+            style={[styles.primary, { backgroundColor: theme.accent }]}
+            onPress={() => router.push("/(auth)/connect")}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Get started"
           >
-            {loading ? (
-              <ActivityIndicator color={theme.textOnPrimary} />
-            ) : (
-              <Text style={[styles.buttonText, { color: theme.textOnPrimary }]}>Continue →</Text>
-            )}
+            <Text style={styles.primaryText}>Get started</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondary}
+            onPress={() => router.push("/(auth)/connect")}
+            accessibilityRole="button"
+            accessibilityLabel="I already have a code"
+          >
+            <Text style={styles.secondaryText}>I already have a code</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  inner: {
-    flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: "center",
-    gap: 32,
-  },
-  logoContainer: {
-    alignItems: "center",
-    gap: 8,
-  },
-  logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  logoText: {
-    fontSize: 36,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  tagline: {
-    fontSize: 15,
-  },
-  card: {
-    borderRadius: 20,
-    padding: 24,
-    gap: 12,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  cardSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  input: {
-    borderRadius: 12,
-    borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 17,
-    marginTop: 4,
-  },
-  errorText: {
-    fontSize: 13,
-  },
-  button: {
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginTop: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "700",
-  },
+  fill: { flex: 1 },
+  content: { flex: 1, paddingHorizontal: 28, paddingBottom: 28 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 16 },
+  wordmark: { fontSize: 14, fontWeight: "700", letterSpacing: 2 },
+  headline: { fontSize: 34, fontWeight: "600", letterSpacing: -0.5, lineHeight: 41 },
+  sub: { fontSize: 15, lineHeight: 22, marginTop: 12, marginBottom: 26, color: "rgba(246,241,230,0.78)" },
+  primary: { borderRadius: 15, paddingVertical: 16, alignItems: "center" },
+  primaryText: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
+  secondary: { paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  secondaryText: { fontSize: 14, fontWeight: "600", color: "rgba(246,241,230,0.85)" },
 });
