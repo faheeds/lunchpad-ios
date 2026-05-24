@@ -54,7 +54,18 @@ function fmtCutoff(iso: string): string {
   const ampm = h >= 12 ? "PM" : "AM";
   h = h % 12 || 12;
   const m = d.getMinutes().toString().padStart(2, "0");
-  return `${h}:${m} ${ampm}`;
+  const time = `${h}:${m} ${ampm}`;
+  // The card already shows the delivery date, but the cutoff is often a
+  // different day (usually the evening before), so the time alone is
+  // ambiguous. Add a relative day ("today"/"tomorrow") or a short date.
+  const startOfDay = (x: Date) =>
+    new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round(
+    (startOfDay(d) - startOfDay(new Date())) / 86_400_000,
+  );
+  if (dayDiff <= 0) return `${time} today`;
+  if (dayDiff === 1) return `${time} tomorrow`;
+  return `${time} ${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
 function hoursUntil(iso: string): number {
