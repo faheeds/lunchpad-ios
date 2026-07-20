@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { fetchDeliveryDates } from "../../../lib/api";
 import { useCart, formatPrice } from "../../../lib/store";
+import { computeLineTotalCents } from "../../../lib/pricing";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
 import { useTheme } from "../../../lib/theme";
 import { FoodImage } from "../../../components/FoodImage";
@@ -116,13 +117,16 @@ function ItemModal({
   const additions = item.options.filter((o) => o.optionType === "ADD_ON" || o.optionType === "ADD");
   const removals = item.options.filter((o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE");
 
-  const extraCents = additions
-    .filter((o) => selectedAdditions.includes(o.name))
-    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
+  // Per-unit price for the line — canonical formula lives in lib/pricing.ts.
+  // We still need `resolvedBase` separately because the cart stores it as
+  // the line's `basePriceCents` (size-aware) alongside the full total.
   const resolvedBase = hasSize
     ? (sizes.find((sz) => sz.name === selectedSize) ?? sizes[0]).priceCents
     : item.basePriceCents;
-  const total = resolvedBase + extraCents;
+  const total = computeLineTotalCents(item, {
+    size: selectedSize,
+    additions: selectedAdditions,
+  });
   const canAdd =
     (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
 

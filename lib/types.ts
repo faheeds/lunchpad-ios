@@ -37,9 +37,10 @@ export type MenuItem = {
    *  until one is chosen. Empty / undefined = no required choice. */
   requiredChoices?: string[];
   /** Size variants with absolute per-size prices. When non-empty, the
-   *  customer MUST pick a size before adding to cart — the selected
-   *  size's `priceCents` becomes the line's per-unit price instead of
-   *  `basePriceCents`. Add-ons stack on top normally. */
+   *  customer MUST pick a size before adding to cart. For the exact
+   *  base + size + add-on pricing algorithm see `lib/pricing.ts`
+   *  (`computeLineTotalCents`) — the single source of truth for
+   *  every price shown in the app. */
   sizes?: MenuItemSize[];
 };
 
@@ -86,9 +87,9 @@ export type CartItem = {
   additions: string[];
   removals: string[];
   allergyNotes?: string;
-  /** Per-unit total (base + additions). For sized items, base is the
-   *  selected size's priceCents (not the menu item's basePriceCents).
-   *  Multiply by `quantity` for the line total shown in the cart. */
+  /** Per-unit total for this configured line. Computed by
+   *  `computeLineTotalCents` in `lib/pricing.ts` — do not recompute
+   *  inline. Multiply by `quantity` for the cart-line subtotal. */
   lineTotalCents: number;
   /** Number of identical units of this configuration. Always ≥ 1. */
   quantity: number;

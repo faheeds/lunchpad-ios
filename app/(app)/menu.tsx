@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { fetchMenu } from "../../lib/api";
 import { formatPrice } from "../../lib/store";
+import { computeLineTotalCents } from "../../lib/pricing";
 import type { MenuItem } from "../../lib/types";
 import { useTheme } from "../../lib/theme";
 import { FoodImage } from "../../components/FoodImage";
@@ -152,7 +153,7 @@ export default function MenuScreen() {
               activeOpacity={0.85}
               onPress={() => setSelectedItem(item)}
               accessibilityRole="button"
-              accessibilityLabel={`${item.name}, ${formatPrice(item.basePriceCents)}`}
+              accessibilityLabel={`${item.name}, ${formatPrice(computeLineTotalCents(item))}`}
             >
               <Card style={s.itemCard}>
                 <FoodImage uri={item.imageUrl} seed={item.id} size={66} radius={12} />
@@ -162,7 +163,7 @@ export default function MenuScreen() {
                       {item.name}
                     </Text>
                     <Text style={[s.itemPrice, { color: theme.primary }]}>
-                      {formatPrice(item.basePriceCents)}
+                      {formatPrice(computeLineTotalCents(item))}
                     </Text>
                   </View>
                   {item.description ? (
@@ -253,7 +254,7 @@ function ItemDetailModal({
             <Text style={[m.name, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
               {item.name}
             </Text>
-            <Text style={[m.price, { color: theme.primary }]}>{formatPrice(item.basePriceCents)}</Text>
+            <Text style={[m.price, { color: theme.primary }]}>{formatPrice(computeLineTotalCents(item))}</Text>
           </View>
 
           {item.description ? (
