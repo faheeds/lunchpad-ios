@@ -31,6 +31,7 @@ import {
   createWeeklyCheckout,
 } from "../../lib/api";
 import { formatPrice } from "../../lib/store";
+import { computeLineTotalCents } from "../../lib/pricing";
 import { useTheme } from "../../lib/theme";
 import type {
   MenuItem,
@@ -56,22 +57,15 @@ function getWeekdayFromISO(iso: string): number {
   return dow === 0 ? 7 : dow;
 }
 
-/** Per-meal price for a saved plan: the chosen size price (or the
- *  item's base price when unsized) plus any add-on deltas. */
+/** Per-meal price for a saved plan. Thin adapter around
+ *  `computeLineTotalCents` — returns 0 when the item is missing (e.g.
+ *  the day's menu removed it after the plan was saved). */
 function resolvePlanPrice(plan: WeeklyPlan, item: MenuItem | undefined): number {
   if (!item) return 0;
-  const addOnCost = item.options
-    .filter(
-      (o) =>
-        (o.optionType === "ADD" || o.optionType === "ADD_ON") &&
-        plan.additions.includes(o.name),
-    )
-    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
-  const sizePrice =
-    plan.size && item.sizes
-      ? item.sizes.find((sz) => sz.name === plan.size)?.priceCents
-      : undefined;
-  return (sizePrice ?? item.basePriceCents) + addOnCost;
+  return computeLineTotalCents(item, {
+    size: plan.size,
+    additions: plan.additions,
+  });
 }
 
 export default function WeeklyPlanScreen() {
@@ -538,13 +532,11 @@ function ItemPickerModal({
   const removals = selectedItem.options.filter(
     (o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE",
   );
-  const extraCents = additions
-    .filter((o) => selectedAdditions.includes(o.name))
-    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
-  const resolvedBase = hasSize
-    ? (sizes.find((sz) => sz.name === selectedSize) ?? sizes[0]).priceCents
-    : selectedItem.basePriceCents;
-  const total = resolvedBase + extraCents;
+  // Per-unit price — canonical formula lives in lib/pricing.ts.
+  const total = computeLineTotalCents(selectedItem, {
+    size: selectedSize,
+    additions: selectedAdditions,
+  });
   const canConfirm =
     (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
 
