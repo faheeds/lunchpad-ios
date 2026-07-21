@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { reportError } from "./sentry";
 
 export const SCHOOL_CODE_KEY = "lunchpad_school_code";
 export const BASE_URL_KEY = "lunchpad_base_url";
@@ -54,41 +55,111 @@ async function buildHeaders(auth = true): Promise<Record<string, string>> {
  * In all cases the right move is to clear the JWT so the app's auth gate
  * routes the user back to sign-in. We re-throw the error so the caller
  * still sees the failure.
+ *
+ * Sentry reporting policy (see Ticket 2 for the rationale):
+ *   - 401: expected auth flow — do NOT report.
+ *   - Other 4xx: client-side / user-input errors (e.g. 404 stale link) —
+ *     do NOT report, they'll show up as user-facing error toasts anyway.
+ *   - 5xx: server bug — REPORT.
+ *   - JSON parse failure on a 2xx: unexpected — REPORT.
+ * The `path` and `method` args are passed only so we can tag the Sentry
+ * event with a coarse operation label. Callers pass literal path strings
+ * with no PII in them.
  */
-async function handleResponse<T>(res: Response): Promise<T> {
+async function handleResponse<T>(
+  res: Response,
+  path: string,
+  method: string,
+): Promise<T> {
   if (res.status === 401) {
     await clearJWT();
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
+    const message = err.error ?? `HTTP ${res.status}`;
+    if (res.status >= 500) {
+      reportError(new Error(`API ${method} ${path} → ${res.status}`), {
+        status: res.status,
+        path,
+        method,
+      });
+    }
+    throw new Error(message);
   }
-  return res.json();
+  try {
+    return (await res.json()) as T;
+  } catch (parseErr) {
+    reportError(parseErr, {
+      kind: "response-parse-error",
+      path,
+      method,
+      status: res.status,
+    });
+    throw parseErr;
+  }
+}
+
+/**
+ * Wraps `fetch` so that a thrown fetch (i.e. network failure — DNS, offline,
+ * TLS error) is reported to Sentry once before being re-thrown. HTTP-level
+ * failures are handled by `handleResponse` and NOT reported here.
+ */
+async function safeFetch(
+  url: string,
+  init: RequestInit,
+  path: string,
+  method: string,
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (networkErr) {
+    reportError(networkErr, {
+      kind: "network-error",
+      path,
+      method,
+    });
+    throw networkErr;
+  }
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
   const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, { headers: await buildHeaders(true) });
-  return handleResponse<T>(res);
+  const res = await safeFetch(
+    `${base}${path}`,
+    { headers: await buildHeaders(true) },
+    path,
+    "GET",
+  );
+  return handleResponse<T>(res, path, "GET");
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, {
-    method: "POST",
-    headers: await buildHeaders(true),
-    body: JSON.stringify(body),
-  });
-  return handleResponse<T>(res);
+  const res = await safeFetch(
+    `${base}${path}`,
+    {
+      method: "POST",
+      headers: await buildHeaders(true),
+      body: JSON.stringify(body),
+    },
+    path,
+    "POST",
+  );
+  return handleResponse<T>(res, path, "POST");
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
   const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, {
-    method: "DELETE",
-    headers: await buildHeaders(true),
-  });
-  return handleResponse<T>(res);
+  const res = await safeFetch(
+    `${base}${path}`,
+    {
+      method: "DELETE",
+      headers: await buildHeaders(true),
+    },
+    path,
+    "DELETE",
+  );
+  return handleResponse<T>(res, path, "DELETE");
 }
 
 // ── School code validation ───────────────────────────────────────────────────
@@ -147,14 +218,14 @@ export const fetchDeliveryDates = () =>
 export async function fetchMenu(): Promise<RestaurantMenu> {
   // Menu is public; bypass the JWT header so guests can browse too.
   const base = await getBaseUrl();
-  const res = await fetch(`${base}/api/mobile/native/menu`, {
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
+  const path = "/api/mobile/native/menu";
+  const res = await safeFetch(
+    `${base}${path}`,
+    { headers: { "Content-Type": "application/json" } },
+    path,
+    "GET",
+  );
+  return handleResponse<RestaurantMenu>(res, path, "GET");
 }
 
 export const fetchAccount = () =>
