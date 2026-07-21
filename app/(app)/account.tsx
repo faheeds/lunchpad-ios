@@ -18,12 +18,14 @@ import {
 import { useRouter } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchAccount, fetchOrders, fetchDeliveryDates, addChild, deleteAccount } from "../../lib/api";
+import { fetchAccount, fetchOrders, fetchDeliveryDates, addChild, editChild, deleteChild, deleteAccount } from "../../lib/api";
 import { signOut } from "../../lib/auth";
 import { formatPrice } from "../../lib/store";
 import { useTheme } from "../../lib/theme";
 import { useRefreshTheme } from "../../lib/theme-context";
 import { Screen, ScreenHeader, Card, Eyebrow, SectionTitle } from "../../components/ui";
+import { diffChildForm, type ChildFormSnapshot } from "../../lib/childEdit";
+import type { Child } from "../../lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -57,6 +59,11 @@ export default function AccountScreen() {
   const [childGrade, setChildGrade] = useState("");
   const [childAllergy, setChildAllergy] = useState("");
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  // When set, the eater form is in "edit" mode for this child; when null,
+  // it's the standard "add" flow. The snapshot is what the fields looked
+  // like at open-time so we can compute a minimal PATCH payload on save.
+  const [editingChildId, setEditingChildId] = useState<string | null>(null);
+  const [editSnapshot, setEditSnapshot] = useState<ChildFormSnapshot | null>(null);
 
   const schools = useMemo(() => {
     const map = new Map<
@@ -76,6 +83,16 @@ export default function AccountScreen() {
   const effectiveSchoolIsOffice =
     schools.find((sc) => sc.id === effectiveSchoolId)?.locationType === "OFFICE";
 
+  function resetChildForm() {
+    setShowAddChild(false);
+    setChildName("");
+    setChildGrade("");
+    setChildAllergy("");
+    setSelectedSchoolId(null);
+    setEditingChildId(null);
+    setEditSnapshot(null);
+  }
+
   const addChildMutation = useMutation({
     mutationFn: () =>
       addChild({
@@ -90,13 +107,80 @@ export default function AccountScreen() {
       // this it keeps showing the stale "Add an eater first" empty state.
       queryClient.invalidateQueries({ queryKey: ["account"] });
       queryClient.invalidateQueries({ queryKey: ["weekly-plans"] });
-      setShowAddChild(false);
-      setChildName("");
-      setChildGrade("");
-      setChildAllergy("");
-      setSelectedSchoolId(null);
+      resetChildForm();
     },
   });
+
+  const editChildMutation = useMutation({
+    mutationFn: () => {
+      if (!editingChildId || !editSnapshot) {
+        throw new Error("No eater selected for edit");
+      }
+      const patch = diffChildForm(editSnapshot, {
+        studentName: childName,
+        grade: childGrade,
+        allergyNotes: childAllergy,
+      });
+      return editChild(editingChildId, patch);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["account"] });
+      queryClient.invalidateQueries({ queryKey: ["weekly-plans"] });
+      resetChildForm();
+    },
+    onError: (err) => {
+      Alert.alert(
+        "Couldn’t save eater",
+        err instanceof Error ? err.message : "Please try again.",
+      );
+    },
+  });
+
+  const deleteChildMutation = useMutation({
+    mutationFn: (id: string) => deleteChild(id),
+    onSuccess: () => {
+      // Deleting a child cascades on the server to clear any active
+      // weekly plans for that eater, so invalidate both caches.
+      queryClient.invalidateQueries({ queryKey: ["account"] });
+      queryClient.invalidateQueries({ queryKey: ["weekly-plans"] });
+    },
+    onError: (err) => {
+      Alert.alert(
+        "Couldn’t delete eater",
+        err instanceof Error ? err.message : "Please try again.",
+      );
+    },
+  });
+
+  function openEditChild(child: Child) {
+    const snapshot: ChildFormSnapshot = {
+      studentName: child.studentName,
+      grade: child.grade,
+      allergyNotes: child.allergyNotes ?? "",
+    };
+    setEditingChildId(child.id);
+    setEditSnapshot(snapshot);
+    setChildName(snapshot.studentName);
+    setChildGrade(snapshot.grade);
+    setChildAllergy(snapshot.allergyNotes);
+    setSelectedSchoolId(child.schoolId);
+    setShowAddChild(true);
+  }
+
+  function confirmDeleteChild(child: Child) {
+    Alert.alert(
+      "Delete eater?",
+      `Deleting ${child.studentName} will also remove any active weekly plan for them. This can’t be undone.`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteChildMutation.mutate(child.id),
+        },
+      ],
+    );
+  }
 
   function handleSignOut() {
     Alert.alert("Sign out", "Are you sure you want to sign out?", [
@@ -142,11 +226,26 @@ export default function AccountScreen() {
     );
   }
 
-  const canSaveChild =
-    childName.trim().length >= 2 &&
-    (effectiveSchoolIsOffice || !!childGrade.trim()) &&
-    !!effectiveSchoolId &&
-    !addChildMutation.isPending;
+  const isEditingChild = editingChildId !== null;
+  const editPatch = useMemo(() => {
+    if (!isEditingChild || !editSnapshot) return null;
+    return diffChildForm(editSnapshot, {
+      studentName: childName,
+      grade: childGrade,
+      allergyNotes: childAllergy,
+    });
+  }, [isEditingChild, editSnapshot, childName, childGrade, childAllergy]);
+  const editHasChanges = editPatch !== null && Object.keys(editPatch).length > 0;
+  const savingChild = addChildMutation.isPending || editChildMutation.isPending;
+  const canSaveChild = isEditingChild
+    ? childName.trim().length >= 2 &&
+      (effectiveSchoolIsOffice || !!childGrade.trim()) &&
+      editHasChanges &&
+      !savingChild
+    : childName.trim().length >= 2 &&
+      (effectiveSchoolIsOffice || !!childGrade.trim()) &&
+      !!effectiveSchoolId &&
+      !savingChild;
 
   return (
     <Screen>
@@ -210,9 +309,21 @@ export default function AccountScreen() {
               <View style={s.sectionRow}>
                 <SectionTitle>Saved eaters</SectionTitle>
                 <TouchableOpacity
-                  onPress={() => setShowAddChild((v) => !v)}
+                  onPress={() => {
+                    if (showAddChild) {
+                      resetChildForm();
+                    } else {
+                      setShowAddChild(true);
+                    }
+                  }}
                   hitSlop={8}
-                  accessibilityLabel={showAddChild ? "Close add eater form" : "Add an eater"}
+                  accessibilityLabel={
+                    showAddChild
+                      ? isEditingChild
+                        ? "Close edit eater form"
+                        : "Close add eater form"
+                      : "Add an eater"
+                  }
                 >
                   <Ionicons
                     name={showAddChild ? "chevron-up" : "add-circle-outline"}
@@ -228,47 +339,78 @@ export default function AccountScreen() {
                 </Text>
               ) : null}
 
-              {account.children.map((child, i) => (
-                <View
-                  key={child.id}
-                  style={[
-                    s.childRow,
-                    i < account.children.length - 1 && {
-                      borderBottomWidth: 1,
-                      borderBottomColor: theme.border,
-                    },
-                  ]}
-                >
-                  <View style={[s.childAvatar, { backgroundColor: theme.dark }]}>
-                    <Text style={[s.childAvatarText, { color: theme.primary }]}>
-                      {child.studentName[0]?.toUpperCase() ?? "?"}
-                    </Text>
+              {account.children.map((child, i) => {
+                const isDeleting =
+                  deleteChildMutation.isPending &&
+                  deleteChildMutation.variables === child.id;
+                return (
+                  <View
+                    key={child.id}
+                    style={[
+                      s.childRow,
+                      i < account.children.length - 1 && {
+                        borderBottomWidth: 1,
+                        borderBottomColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <View style={[s.childAvatar, { backgroundColor: theme.dark }]}>
+                      <Text style={[s.childAvatarText, { color: theme.primary }]}>
+                        {child.studentName[0]?.toUpperCase() ?? "?"}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.childName, { color: theme.textPrimary }]}>
+                        {child.studentName}
+                      </Text>
+                      <Text style={[s.childDetail, { color: theme.textSecondary }]}>
+                        {child.locationType === "OFFICE"
+                          ? child.schoolName
+                          : `Grade ${child.grade} \u00b7 ${child.schoolName}`}
+                      </Text>
+                      {child.allergyNotes ? (
+                        <View style={s.allergyRow}>
+                          <Ionicons name="warning-outline" size={12} color={theme.accent} />
+                          <Text style={[s.allergyText, { color: theme.accent }]}>
+                            {child.allergyNotes}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={s.childActions}>
+                      <TouchableOpacity
+                        onPress={() => openEditChild(child)}
+                        hitSlop={8}
+                        disabled={isDeleting}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Edit ${child.studentName}`}
+                        style={s.childActionBtn}
+                      >
+                        <Ionicons name="pencil-outline" size={18} color={theme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => confirmDeleteChild(child)}
+                        hitSlop={8}
+                        disabled={isDeleting}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${child.studentName}`}
+                        style={s.childActionBtn}
+                      >
+                        {isDeleting ? (
+                          <ActivityIndicator size="small" color={theme.danger} />
+                        ) : (
+                          <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.childName, { color: theme.textPrimary }]}>
-                      {child.studentName}
-                    </Text>
-                    <Text style={[s.childDetail, { color: theme.textSecondary }]}>
-                      {child.locationType === "OFFICE"
-                        ? child.schoolName
-                        : `Grade ${child.grade} \u00b7 ${child.schoolName}`}
-                    </Text>
-                    {child.allergyNotes ? (
-                      <View style={s.allergyRow}>
-                        <Ionicons name="warning-outline" size={12} color={theme.accent} />
-                        <Text style={[s.allergyText, { color: theme.accent }]}>
-                          {child.allergyNotes}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
+                );
+              })}
 
               {showAddChild ? (
                 <View style={[s.addForm, { borderTopColor: theme.border }]}>
-                  <Eyebrow>Add an eater</Eyebrow>
-                  {schools.length > 1 ? (
+                  <Eyebrow>{isEditingChild ? "Edit eater" : "Add an eater"}</Eyebrow>
+                  {schools.length > 1 && !isEditingChild ? (
                     <View style={s.schoolChips}>
                       {schools.map((sc) => {
                         const on = effectiveSchoolId === sc.id;
@@ -323,13 +465,19 @@ export default function AccountScreen() {
                   />
                   <TouchableOpacity
                     style={[s.saveBtn, { backgroundColor: theme.primary }, !canSaveChild && { opacity: 0.45 }]}
-                    onPress={() => addChildMutation.mutate()}
+                    onPress={() =>
+                      isEditingChild
+                        ? editChildMutation.mutate()
+                        : addChildMutation.mutate()
+                    }
                     disabled={!canSaveChild}
                   >
-                    {addChildMutation.isPending ? (
+                    {savingChild ? (
                       <ActivityIndicator color={theme.textOnPrimary} />
                     ) : (
-                      <Text style={[s.saveBtnText, { color: theme.textOnPrimary }]}>Save eater</Text>
+                      <Text style={[s.saveBtnText, { color: theme.textOnPrimary }]}>
+                        {isEditingChild ? "Save changes" : "Save eater"}
+                      </Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -450,6 +598,8 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     muted: { fontSize: 14, lineHeight: 20 },
 
     childRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 9 },
+    childActions: { flexDirection: "row", alignItems: "center", gap: 6 },
+    childActionBtn: { padding: 6 },
     childAvatar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
     childAvatarText: { fontSize: 16, fontWeight: "700" },
     childName: { fontSize: 14.5, fontWeight: "700" },
