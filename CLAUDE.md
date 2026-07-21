@@ -20,19 +20,35 @@ Customers use it to browse menus, sign in with Apple, and place school or office
 ## Project Structure
 ```
 app/
+  _layout.tsx                — Root layout / auth gate
+  index.tsx                  — Root redirect
   (auth)/
-    index.tsx        — School code entry screen (first screen)
-    sign-in.tsx      — Apple Sign In screen
+    _layout.tsx              — Auth stack layout
+    index.tsx                — School code entry screen (first screen)
+    connect.tsx              — Connect / welcome funnel step
+    sign-in.tsx              — Apple Sign In screen
   (app)/
-    index.tsx        — Home / delivery dates list
-    order.tsx        — Order placement screen
-    orders.tsx       — Order history
-    account.tsx      — Account / profile
+    _layout.tsx              — Authenticated tab layout
+    index.tsx                — Home / delivery dates storefront
+    menu.tsx                 — Menu browse tab
+    cart.tsx                 — Cart / order summary
+    weekly-plan.tsx          — Weekly plan screen
+    account.tsx              — Account / profile
+    order/[dateId].tsx       — Order placement screen (per delivery date)
+    orders/[orderId].tsx     — Order detail (history)
+  checkout/
+    success.tsx              — Stripe post-payment landing
 lib/
-  api.ts             — All API calls + SecureStore helpers + validateSchoolCode
-  auth.ts            — Apple Sign In flow
-  types.ts           — Shared TypeScript types
+  api.ts                     — All API calls + SecureStore helpers + validateSchoolCode
+  auth.ts                    — Apple Sign In flow
+  pricing.ts                 — Canonical line-item pricing (extracted in Ticket 1)
+  store.ts                   — Client-side state / cache
+  theme.ts                   — Editorial theme tokens
+  types.ts                   — Shared TypeScript types
 ```
+
+CI: two workflows live under `.github/workflows/` — `eng-agent.yml` (issue-driven engineering
+agent that opens agent-authored PRs) and `agent-fix.yml` (reserved for the fix-loop workflow).
 
 ## Key Architecture Decisions
 
@@ -78,30 +94,84 @@ All under `/api/mobile/native/`:
 - `GET  /account/children` — saved children profiles
 - `POST /account/children` — add child
 
+### Native API contract — source of truth
+The canonical native API contract lives in the web repo at `docs/mobile-api-contract.md` —
+update THAT doc alongside any change to the routes under `app/api/mobile/native/` on the web
+repo. This file lists the routes but is not the source of truth.
+
 ### Stripe Checkout
 The app opens the Stripe Checkout URL in the device browser.
 After payment, Stripe redirects to `/api/mobile/native/order/success?orderId=...`
 which then deep-links back to the app via `lunchpad://` scheme.
 
-## Current Status (as of May 2026)
-- School code entry screen ✅
-- Apple Sign In ✅ (compatible with per-tenant scoping — no app changes needed)
-- Delivery dates list — built, needs end-to-end test on real device
-- Order placement screen — built, needs end-to-end test
-- Stripe checkout flow — built, needs end-to-end test
-- Order history — built, needs end-to-end test
-- Deep link back after payment — built, needs end-to-end test
-- EAS Build / TestFlight — initial build submitted, pipeline needs end-to-end verification (#7)
+## Current Status (as of July 2026)
+
+### Shipped
+- School code entry screen
+- Apple Sign In (per-tenant scoping compatible)
+- Delivery dates list / home storefront
+- Order placement screen (per delivery date)
+- Stripe checkout flow + deep link back after payment
+- Order history + order detail view
+- Editorial theme redesign (PR #20 — customer app brought up to the new visual system)
+- App icon uses the LunchPad web logo
 - 401 auto-handling — `lib/api.ts` clears JWT on 401 so users gracefully bounce to sign-in
-- Backend per-tenant scoping landed — iOS app already targets tenant subdomains so no breakage
+- Backend per-tenant scoping — iOS already targets tenant subdomains, no breakage
+- In-app account deletion (App Store guideline 5.1.1(v))
+- Office-aware labels — Grade hidden for office locations
+- Cutoff day (not just time) shown on date cards
+- Weekly plan / add-eater cache refresh fix
+- Jest test runner wired + `lib/pricing.ts` extracted with unit coverage (PR #21, Ticket 1)
+- Multiple TestFlight builds shipped (buildNumber 31+)
+
+## Parity backlog (Phase 2)
+Product-level gaps between the iOS app and the web app that remain open:
+- Reliable order cancellation
+- Order modification (edit an existing order before cutoff)
+- Reorder from history
+- Child edit / delete
+- Push notifications
 
 ## Pending / Next Steps
-1. End-to-end smoke test on a real device against `<slug>.lunchpad.us`:
+1. Sentry observability rollout (Ticket 2 — likely landing shortly after this doc PR).
+2. End-to-end smoke test on a real device against `<slug>.lunchpad.us`:
    school code → Apple Sign In → browse menu → place order → Stripe → deep link back.
-2. Refresh EAS Build with the latest `lib/api.ts` (401 handling) and submit to TestFlight.
-3. If a new tenant is needed for testing, the wildcard `*.lunchpad.us` is configured —
-   any newly-created restaurant via the web signup auto-registers the subdomain.
+3. Verify the EAS pipeline against the latest post-Ticket-1 build.
 4. Apple Developer account for signing: `faheed@live.com` (NOT the gmail).
+
+## Lane rules — agents
+
+Two lanes. Each agent owns specific files and must never touch the other lane's files. If dev
+and QA need the same file, they coordinate through the lead — never in parallel.
+
+**dev** → all source code: `app/`, `lib/`, `components/` (if any), `assets/`, `scripts/`,
+config files (`app.json`, `eas.json`, `tsconfig.json`, `babel.config.js`), and CI workflow files
+under `.github/` — implementation and infra, never test files.
+
+**qa** → ALL test files (any `*.test.ts`/`*.test.tsx`, `jest.config.*`, and any `tests/` or
+`__tests__/` directory) — QA owns test authorship end to end.
+
+### QA lane — hard rules
+
+QA owns every test file. Dev writes SOURCE CODE AND INFRA ONLY (including wiring a test
+runner's config/package.json script) and never authors test *cases* — if dev believes a test is
+needed, it describes the test case to the lead in plain language; the lead routes it to QA.
+
+QA branches are named `qa/<short-desc>`, NOT `agent/<short-desc>`.
+
+Every happy-path test needs at least one adversarial test (boundary, malformed input, race
+condition). No flaky tests. No tests that hit production services (the live web API).
+
+When a test fails, QA documents the disagreement between expected and actual behavior as a
+finding — QA does not fix application code.
+
+### Lead responsibilities
+
+The lead agent (this session) reads incoming tickets, decides whether each requires dev work,
+QA work, or both, and dispatches accordingly using this session's own subagent tooling rather
+than doing both kinds of work directly in the main thread. The lead resolves conflicts when dev
+and QA need the same file, and is responsible for opening/merging PRs whose scope spans both
+lanes' commits.
 
 ## Known Gotchas
 - **File writes from Claude sandbox get truncated** on Windows-mounted paths. Always use bash heredoc
