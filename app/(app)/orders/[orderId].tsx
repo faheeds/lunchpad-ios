@@ -163,23 +163,8 @@ export default function OrderDetail() {
           onPress: async () => {
             try {
               setIsCancelling(true);
-              // Try to call cancel endpoint if it exists
-              try {
-                await apiDelete(`/api/mobile/native/orders/${order.id}`);
-              } catch (err) {
-                // If endpoint doesn't exist, show error with contact info
-                const contactEmail = theme.restaurant?.contactEmail;
-                throw new Error(
-                  contactEmail
-                    ? `Cancel endpoint not yet available. Please email ${contactEmail} to cancel this order.`
-                    : "Unable to cancel. Please contact the restaurant."
-                );
-              }
-
-              // Invalidate queries to refresh order list
+              await apiDelete(`/api/mobile/native/orders/${order.id}`);
               await queryClient.invalidateQueries({ queryKey: ["orders"] });
-
-              // Show success and go back
               Alert.alert("Order cancelled", "Your order has been cancelled.", [
                 { text: "OK", onPress: () => router.back() },
               ]);
