@@ -3,7 +3,7 @@
  * Shows order contents, status, and modify/cancel actions if before cutoff.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -14,13 +14,20 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import { fetchOrders, fetchDeliveryDates, apiDelete } from "../../../lib/api";
-import { formatPrice } from "../../../lib/store";
+import { formatPrice, useCart } from "../../../lib/store";
 import { useTheme } from "../../../lib/theme";
+import {
+  planReorder,
+  reorderMissingReasonLabel,
+  type ReorderPlan,
+} from "../../../lib/reorder";
+import type { DeliveryDateWithMenu, OrderHistoryItem } from "../../../lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -55,9 +62,76 @@ export default function OrderDetail() {
 
   const [isModifying, setIsModifying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [reorderOpen, setReorderOpen] = useState(false);
 
   const order = orders?.find((o) => o.id === orderId);
   const deliveryDate = deliveryDates?.find((d) => d.deliveryDate === order?.deliveryDate);
+
+  const cartItems = useCart((st) => st.items);
+  const cartDeliveryDateId = useCart((st) => st.deliveryDateId);
+  const clearCart = useCart((st) => st.clearCart);
+  const addItem = useCart((st) => st.addItem);
+
+  const canReorder = !!order && order.items.length > 0;
+
+  function beginReorder() {
+    if (!order) return;
+    // If the cart is non-empty and we're going to a different delivery
+    // date, warn first — otherwise the zustand store silently wipes the
+    // cart the first time we call addItem with a mismatched date.
+    // We don't know the target date yet, but any non-empty cart is at
+    // risk (in the worst case, the user picks the same date and this
+    // dialog was cautious; that's a fine tradeoff for the safety net).
+    if (cartItems.length > 0) {
+      Alert.alert(
+        "Replace current cart?",
+        "You have items in your cart. Reordering will replace them. Continue?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Continue",
+            style: "destructive",
+            onPress: () => setReorderOpen(true),
+          },
+        ],
+      );
+      return;
+    }
+    setReorderOpen(true);
+  }
+
+  function handleReorderConfirm(
+    targetDate: DeliveryDateWithMenu,
+    plan: ReorderPlan,
+  ) {
+    if (plan.cloneable.length === 0) {
+      setReorderOpen(false);
+      return;
+    }
+    // Wipe the cart if it belonged to a different delivery date. The
+    // store would do this on its own on the first addItem, but doing it
+    // explicitly here keeps the code symmetric with the confirm dialog
+    // above and avoids leaking any transient state.
+    if (cartDeliveryDateId && cartDeliveryDateId !== targetDate.id) {
+      clearCart();
+    }
+    for (const line of plan.cloneable) {
+      addItem(
+        {
+          menuItemId: line.menuItem.id,
+          itemName: line.menuItem.name,
+          basePriceCents: line.menuItem.basePriceCents,
+          additions: line.additions,
+          removals: line.removals,
+          lineTotalCents: line.lineTotalCents,
+        },
+        targetDate.id,
+        targetDate.schoolId,
+      );
+    }
+    setReorderOpen(false);
+    router.push("/(app)/cart");
+  }
 
   const isBeforeCutoff = () => {
     if (!deliveryDate) return false;
@@ -277,6 +351,22 @@ export default function OrderDetail() {
           ))}
         </View>
 
+        {/* Reorder — always available when there's at least one item, regardless of status */}
+        {canReorder && (
+          <View style={[styles.section, { backgroundColor: theme.surface }]}>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+              onPress={beginReorder}
+              accessibilityRole="button"
+              accessibilityLabel="Reorder these items"
+            >
+              <Text style={[styles.actionBtnText, { color: theme.textOnPrimary }]}>
+                Reorder these items
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Actions */}
         {(canModify || canCancel) && (
           <View style={[styles.section, { backgroundColor: theme.surface, gap: 10 }]}>
@@ -353,9 +443,398 @@ export default function OrderDetail() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {reorderOpen && order ? (
+        <ReorderModal
+          order={order}
+          deliveryDates={deliveryDates ?? []}
+          onClose={() => setReorderOpen(false)}
+          onConfirm={handleReorderConfirm}
+        />
+      ) : null}
     </View>
   );
 }
+
+// ── Reorder modal ────────────────────────────────────────────────────────────
+
+/**
+ * Modal that walks the user through reorder in one screen:
+ *   1. Pick a target delivery date (list of available dates).
+ *   2. Show the plan: cloneable + missing items.
+ *   3. Confirm → parent adds items and navigates to cart.
+ *
+ * All matching/pricing logic lives in `lib/reorder.ts` so it can be unit-tested.
+ */
+function ReorderModal({
+  order,
+  deliveryDates,
+  onClose,
+  onConfirm,
+}: {
+  order: OrderHistoryItem;
+  deliveryDates: DeliveryDateWithMenu[];
+  onClose: () => void;
+  onConfirm: (targetDate: DeliveryDateWithMenu, plan: ReorderPlan) => void;
+}) {
+  const theme = useTheme();
+  const [selectedDateId, setSelectedDateId] = useState<string | null>(null);
+
+  const targetDate = useMemo(
+    () => deliveryDates.find((d) => d.id === selectedDateId) ?? null,
+    [deliveryDates, selectedDateId],
+  );
+
+  const plan: ReorderPlan | null = useMemo(() => {
+    if (!targetDate) return null;
+    return planReorder(order, targetDate.menuItems);
+  }, [order, targetDate]);
+
+  const cloneableCount = plan?.cloneable.length ?? 0;
+  const missingCount = plan?.missing.length ?? 0;
+  const nothingCloneable = plan !== null && cloneableCount === 0;
+
+  return (
+    <Modal
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={[reorderStyles.container, { backgroundColor: theme.dark }]}>
+        <View style={reorderStyles.handleRow}>
+          <View style={{ width: 60 }} />
+          <Text
+            style={[
+              reorderStyles.headerTitle,
+              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+            ]}
+          >
+            Reorder
+          </Text>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityLabel="Close"
+            hitSlop={8}
+            style={{ width: 60, alignItems: "flex-end" }}
+          >
+            <Text style={[reorderStyles.closeText, { color: theme.textSecondary }]}>
+              Close
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={reorderStyles.scroll}>
+          {/* Step 1: pick a date */}
+          <View style={[reorderStyles.section, { backgroundColor: theme.surface }]}>
+            <Text style={[reorderStyles.sectionTitle, { color: theme.textMuted }]}>
+              Delivery date
+            </Text>
+            {deliveryDates.length === 0 ? (
+              <Text style={[reorderStyles.emptyText, { color: theme.textSecondary }]}>
+                No upcoming delivery dates. Check back once new dates open.
+              </Text>
+            ) : (
+              deliveryDates.map((d) => {
+                const on = d.id === selectedDateId;
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    onPress={() => setSelectedDateId(d.id)}
+                    style={[
+                      reorderStyles.dateRow,
+                      { borderColor: on ? theme.primary : theme.border },
+                      on && { backgroundColor: `${theme.primary}14` },
+                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={`${formatDate(d.deliveryDate)}, ${d.school.name}`}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[reorderStyles.dateTitle, { color: theme.textPrimary }]}
+                      >
+                        {formatDate(d.deliveryDate)}
+                      </Text>
+                      <Text
+                        style={[reorderStyles.dateSub, { color: theme.textMuted }]}
+                      >
+                        {d.school.name}
+                      </Text>
+                    </View>
+                    {on ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={22}
+                        color={theme.primary}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          reorderStyles.radio,
+                          { borderColor: theme.border },
+                        ]}
+                      />
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+
+          {/* Step 2: plan preview */}
+          {plan && targetDate ? (
+            <>
+              {plan.cloneable.length > 0 && (
+                <View
+                  style={[reorderStyles.section, { backgroundColor: theme.surface }]}
+                >
+                  <Text
+                    style={[reorderStyles.sectionTitle, { color: theme.textMuted }]}
+                  >
+                    Will be added ({plan.cloneable.length})
+                  </Text>
+                  {plan.cloneable.map((c, idx) => (
+                    <View
+                      key={`clone-${idx}`}
+                      style={[
+                        reorderStyles.itemRow,
+                        { borderBottomColor: theme.border },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[reorderStyles.itemName, { color: theme.textPrimary }]}
+                        >
+                          {c.menuItem.name}
+                        </Text>
+                        {(c.additions.length > 0 || c.removals.length > 0) && (
+                          <Text
+                            style={[
+                              reorderStyles.itemMeta,
+                              { color: theme.textSecondary },
+                            ]}
+                          >
+                            {c.additions.length > 0 && `+ ${c.additions.join(", ")}`}
+                            {c.additions.length > 0 && c.removals.length > 0 && " • "}
+                            {c.removals.length > 0 && `− ${c.removals.join(", ")}`}
+                          </Text>
+                        )}
+                      </View>
+                      <Text
+                        style={[reorderStyles.itemPrice, { color: theme.textPrimary }]}
+                      >
+                        {formatPrice(c.lineTotalCents)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {plan.missing.length > 0 && (
+                <View
+                  style={[
+                    reorderStyles.section,
+                    {
+                      backgroundColor: theme.surface,
+                      borderWidth: 1,
+                      borderColor: theme.warning,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[reorderStyles.sectionTitle, { color: theme.warning }]}
+                  >
+                    Not added ({plan.missing.length})
+                  </Text>
+                  {plan.missing.map((m, idx) => (
+                    <View
+                      key={`miss-${idx}`}
+                      style={[
+                        reorderStyles.itemRow,
+                        { borderBottomColor: theme.border },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            reorderStyles.itemName,
+                            { color: theme.textPrimary },
+                          ]}
+                        >
+                          {m.name}
+                        </Text>
+                        <Text
+                          style={[
+                            reorderStyles.itemMeta,
+                            { color: theme.textSecondary },
+                          ]}
+                        >
+                          {reorderMissingReasonLabel(m.reason)}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {nothingCloneable && (
+                <View
+                  style={[
+                    reorderStyles.section,
+                    { backgroundColor: theme.surface },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      reorderStyles.emptyText,
+                      { color: theme.textSecondary },
+                    ]}
+                  >
+                    None of these items are available on {formatDate(targetDate.deliveryDate)}.
+                  </Text>
+                </View>
+              )}
+            </>
+          ) : (
+            <View
+              style={[reorderStyles.section, { backgroundColor: theme.surface }]}
+            >
+              <Text
+                style={[reorderStyles.emptyText, { color: theme.textSecondary }]}
+              >
+                Pick a delivery date to see what can be reordered.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <SafeAreaView
+          style={[
+            reorderStyles.footer,
+            { backgroundColor: theme.dark, borderTopColor: theme.border },
+          ]}
+        >
+          {nothingCloneable ? (
+            <TouchableOpacity
+              style={[reorderStyles.actionBtn, { backgroundColor: theme.primary }]}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Back to order"
+            >
+              <Text
+                style={[
+                  reorderStyles.actionBtnText,
+                  { color: theme.textOnPrimary },
+                ]}
+              >
+                OK
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[
+                reorderStyles.actionBtn,
+                {
+                  backgroundColor:
+                    plan && cloneableCount > 0 ? theme.primary : theme.border,
+                },
+              ]}
+              onPress={() => {
+                if (!plan || !targetDate || cloneableCount === 0) return;
+                onConfirm(targetDate, plan);
+              }}
+              disabled={!plan || cloneableCount === 0}
+              accessibilityRole="button"
+              accessibilityLabel={`Continue with ${cloneableCount} item${cloneableCount === 1 ? "" : "s"}`}
+            >
+              <Text
+                style={[
+                  reorderStyles.actionBtnText,
+                  {
+                    color:
+                      plan && cloneableCount > 0
+                        ? theme.textOnPrimary
+                        : theme.textMuted,
+                  },
+                ]}
+              >
+                {plan && cloneableCount > 0
+                  ? `Continue with ${cloneableCount} item${cloneableCount === 1 ? "" : "s"}${
+                      missingCount > 0 ? ` (${missingCount} skipped)` : ""
+                    }`
+                  : "Pick a date to continue"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
+const reorderStyles = StyleSheet.create({
+  container: { flex: 1 },
+  handleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
+  closeText: { fontSize: 14, fontWeight: "600" },
+  scroll: { paddingHorizontal: 16, paddingBottom: 24, gap: 16 },
+  section: { borderRadius: 16, padding: 16, gap: 10 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  emptyText: { fontSize: 14, lineHeight: 20 },
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  dateTitle: { fontSize: 15, fontWeight: "700" },
+  dateSub: { fontSize: 12.5, marginTop: 2 },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+  },
+  itemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  itemName: { fontSize: 15, fontWeight: "600" },
+  itemMeta: { fontSize: 13, marginTop: 2 },
+  itemPrice: { fontSize: 15, fontWeight: "700" },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+    borderTopWidth: 1,
+  },
+  actionBtn: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnText: { fontSize: 15, fontWeight: "700" },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
