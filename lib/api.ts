@@ -148,6 +148,21 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return handleResponse<T>(res, path, "POST");
 }
 
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const base = await getBaseUrl();
+  const res = await safeFetch(
+    `${base}${path}`,
+    {
+      method: "PATCH",
+      headers: await buildHeaders(true),
+      body: JSON.stringify(body),
+    },
+    path,
+    "PATCH",
+  );
+  return handleResponse<T>(res, path, "PATCH");
+}
+
 export async function apiDelete<T>(path: string): Promise<T> {
   const base = await getBaseUrl();
   const res = await safeFetch(
@@ -243,6 +258,15 @@ export const addChild = (data: {
   grade: string;
   allergyNotes?: string;
 }) => apiPost("/api/mobile/native/account/children", data);
+
+export const editChild = (id: string, data: {
+  studentName?: string;
+  grade?: string;
+  allergyNotes?: string;
+}) => apiPatch(`/api/mobile/native/account/children/${id}`, data);
+
+export const deleteChild = (id: string) =>
+  apiDelete<{ ok: true }>(`/api/mobile/native/account/children/${id}`);
 
 // ── Weekly plan ──────────────────────────────────────────────────────────────
 
