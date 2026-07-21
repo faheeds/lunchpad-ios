@@ -438,10 +438,13 @@ describe("reorderMissingReasonLabel", () => {
     expect(a).not.toBe(c);
   });
 
-  test("15c. defensive: passing an invalid literal returns undefined (no throw)", () => {
-    // FINDING-worthy: the switch has no default. TS prevents this at
-    // compile time, but at runtime an invalid literal falls off the end
-    // and returns undefined. The function does NOT throw.
+  test("15c. defensive: passing an invalid literal returns the fallback string (no throw)", () => {
+    // TS prevents invalid inputs at compile time via the ReorderMissingReason
+    // union, but the runtime exhaustiveness `default` branch in
+    // reorderMissingReasonLabel now returns a safe fallback string
+    // ("Please add manually") instead of `undefined` if a bogus value ever
+    // sneaks in (e.g. bad JSON from the API, a stale enum value). The
+    // function must still not throw.
     const bogus = "not-a-real-reason" as unknown as
       | "not-on-menu"
       | "requires-size"
@@ -450,6 +453,6 @@ describe("reorderMissingReasonLabel", () => {
     expect(() => {
       out = reorderMissingReasonLabel(bogus);
     }).not.toThrow();
-    expect(out).toBeUndefined();
+    expect(out).toBe("Please add manually");
   });
 });

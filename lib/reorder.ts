@@ -129,5 +129,12 @@ export function reorderMissingReasonLabel(reason: ReorderMissingReason): string 
       return "requires selecting a size — please add manually";
     case "requires-choice":
       return "requires a pick-one selection — please add manually";
+    default: {
+      // Exhaustiveness guard — if a new ReorderMissingReason variant is
+      // added without updating this switch, the following assignment
+      // becomes a compile-time error.
+      const _exhaustive: never = reason;
+      return "Please add manually";
+    }
   }
 }
