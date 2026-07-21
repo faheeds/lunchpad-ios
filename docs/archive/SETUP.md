@@ -1,3 +1,6 @@
+> **ARCHIVED — describes a superseded Capacitor/WebView shell, not the current native Expo
+> React Native app. Kept for reference only. See CLAUDE.md for current setup.**
+
 # LunchPad iOS — Setup guide
 
 ## What this is
