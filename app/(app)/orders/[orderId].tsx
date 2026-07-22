@@ -77,6 +77,13 @@ export default function OrderDetail() {
   const [isCancelling, setIsCancelling] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [modifyOpen, setModifyOpen] = useState(false);
+  // Snapshots captured at the moment the modify modal opens. Using live
+  // React Query values directly in the render condition meant a background
+  // refetch could transiently make `order` or `deliveryDate` falsy, which
+  // unmounts the modal and resets editStates — silently wiping any
+  // in-progress selections before the user hits Save.
+  const [editOrder, setEditOrder] = useState<OrderHistoryItem | null>(null);
+  const [editDeliveryDate, setEditDeliveryDate] = useState<DeliveryDateWithMenu | null>(null);
 
   const order = orders?.find((o) => o.id === orderId);
   const deliveryDate = deliveryDates?.find((d) => d.deliveryDate === order?.deliveryDate);
@@ -156,6 +163,9 @@ export default function OrderDetail() {
   const canCancel = order && order.status === "PAID" && isBeforeCutoff();
 
   function handleModify() {
+    if (!order || !deliveryDate) return;
+    setEditOrder(order);
+    setEditDeliveryDate(deliveryDate);
     setModifyOpen(true);
   }
 
@@ -447,13 +457,17 @@ export default function OrderDetail() {
           onConfirm={handleReorderConfirm}
         />
       ) : null}
-      {modifyOpen && order && deliveryDate ? (
+      {modifyOpen && editOrder && editDeliveryDate ? (
         <ModifyModal
-          order={order}
-          deliveryDate={deliveryDate}
-          orderId={order.id}
+          order={editOrder}
+          deliveryDate={editDeliveryDate}
+          orderId={editOrder.id}
           queryClient={queryClient}
-          onClose={() => setModifyOpen(false)}
+          onClose={() => {
+            setModifyOpen(false);
+            setEditOrder(null);
+            setEditDeliveryDate(null);
+          }}
         />
       ) : null}
     </View>
@@ -800,10 +814,11 @@ function ModifyModal({
   onClose: () => void;
 }) {
   const theme = useTheme();
-  const plan = useMemo(
-    () => buildModifyPlan(order, deliveryDate.menuItems),
-    [order, deliveryDate],
-  );
+  // Empty deps: plan is intentionally computed once at mount from the
+  // already-snapshotted props. The parent guarantees these don't change
+  // during the modal's lifetime (see editOrder/editDeliveryDate in OrderDetail).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const plan = useMemo(() => buildModifyPlan(order, deliveryDate.menuItems), []);
 
   const [editStates, setEditStates] = useState<ItemEditState[]>(() =>
     plan.matched.map((m) => ({
