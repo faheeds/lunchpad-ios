@@ -29,6 +29,17 @@ function makeOrderHistoryItem(
   };
 }
 
+function makeMenuItemWithSizes(overrides: Partial<MenuItem> = {}): MenuItem {
+  return {
+    ...makeMenuItem(),
+    sizes: [
+      { id: "sz-1", name: "Small", priceCents: 700 },
+      { id: "sz-2", name: "Large", priceCents: 1000 },
+    ],
+    ...overrides,
+  };
+}
+
 describe("buildModifyPlan", () => {
   // ── Happy path — all matched ───────────────────────────────────────────────
 
@@ -201,5 +212,48 @@ describe("buildModifyPlan", () => {
     ]);
     const plan = buildModifyPlan(order, menu);
     expect(plan.matched[0].additions).toEqual(["Avocado", "Extra Patty"]);
+  });
+
+  // ── Size picker contract ───────────────────────────────────────────────────
+  //
+  // buildModifyPlan does NOT pre-seed size or choice on matched items —
+  // OrderHistoryItem carries no size or choice fields. The modal initialises
+  // both as null and requires the customer to explicitly confirm them before
+  // submission (same validation gate for both). These tests document that
+  // the menuItem reference on matched items carries the sizes array the
+  // modal needs to render the picker and enforce explicit selection.
+
+  test("matched menuItem with sizes preserves sizes array (modal can render size picker)", () => {
+    const menu = [makeMenuItemWithSizes({ name: "Burger" })];
+    const order = makeOrderHistoryItem([
+      { name: "Burger", lineTotalCents: 1000, additions: [], removals: [] },
+    ]);
+    const plan = buildModifyPlan(order, menu);
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.matched[0].menuItem.sizes).toHaveLength(2);
+    expect(plan.matched[0].menuItem.sizes![0].name).toBe("Small");
+    expect(plan.matched[0].menuItem.sizes![1].name).toBe("Large");
+  });
+
+  test("matched menuItem without sizes has no sizes field (size picker correctly skipped)", () => {
+    const menu = [makeMenuItem({ name: "Burger" })]; // no sizes field
+    const order = makeOrderHistoryItem([
+      { name: "Burger", lineTotalCents: 800, additions: [], removals: [] },
+    ]);
+    const plan = buildModifyPlan(order, menu);
+    expect(plan.matched).toHaveLength(1);
+    expect(plan.matched[0].menuItem.sizes).toBeUndefined();
+  });
+
+  test("adversarial: empty sizes array treated same as no sizes — picker skipped", () => {
+    const menu = [makeMenuItem({ name: "Burger", sizes: [] })];
+    const order = makeOrderHistoryItem([
+      { name: "Burger", lineTotalCents: 800, additions: [], removals: [] },
+    ]);
+    const plan = buildModifyPlan(order, menu);
+    expect(plan.matched).toHaveLength(1);
+    // Modal checks (menuItem.sizes?.length ?? 0) > 0 before rendering the size picker;
+    // empty array produces 0, so no picker is shown and no size is required.
+    expect(plan.matched[0].menuItem.sizes).toHaveLength(0);
   });
 });
