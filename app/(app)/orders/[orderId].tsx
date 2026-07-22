@@ -17,16 +17,29 @@ import {
   Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { fetchOrders, fetchDeliveryDates, apiDelete } from "../../../lib/api";
+import * as WebBrowser from "expo-web-browser";
+import {
+  fetchOrders,
+  fetchDeliveryDates,
+  apiDelete,
+  modifyOrder,
+  type ModifyOrderItem,
+} from "../../../lib/api";
 import { formatPrice, useCart } from "../../../lib/store";
+import { computeLineTotalCents } from "../../../lib/pricing";
 import { useTheme } from "../../../lib/theme";
 import {
   planReorder,
   reorderMissingReasonLabel,
   type ReorderPlan,
 } from "../../../lib/reorder";
+import {
+  buildModifyPlan,
+  type ModifyPlan,
+  type MatchedItem,
+} from "../../../lib/modify";
 import type { DeliveryDateWithMenu, OrderHistoryItem } from "../../../lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -63,6 +76,7 @@ export default function OrderDetail() {
   const [isModifying, setIsModifying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
+  const [modifyOpen, setModifyOpen] = useState(false);
 
   const order = orders?.find((o) => o.id === orderId);
   const deliveryDate = deliveryDates?.find((d) => d.deliveryDate === order?.deliveryDate);
@@ -141,12 +155,8 @@ export default function OrderDetail() {
   const canModify = order && order.status === "PAID" && isBeforeCutoff();
   const canCancel = order && order.status === "PAID" && isBeforeCutoff();
 
-  async function handleModify() {
-    Alert.alert(
-      "Modify order",
-      "Modify functionality is coming soon. For now, please contact the restaurant before the cutoff.",
-      [{ text: "OK", onPress: () => {} }]
-    );
+  function handleModify() {
+    setModifyOpen(true);
   }
 
   async function handleCancel() {
@@ -435,6 +445,15 @@ export default function OrderDetail() {
           deliveryDates={deliveryDates ?? []}
           onClose={() => setReorderOpen(false)}
           onConfirm={handleReorderConfirm}
+        />
+      ) : null}
+      {modifyOpen && order && deliveryDate ? (
+        <ModifyModal
+          order={order}
+          deliveryDate={deliveryDate}
+          orderId={order.id}
+          queryClient={queryClient}
+          onClose={() => setModifyOpen(false)}
         />
       ) : null}
     </View>
@@ -756,6 +775,492 @@ function ReorderModal({
     </Modal>
   );
 }
+
+
+// ── Modify order modal ───────────────────────────────────────────────────────
+
+type ItemEditState = {
+  selectedSize: string | null;
+  selectedChoice: string | null;
+  selectedAdditions: string[];
+  selectedRemovals: string[];
+};
+
+function ModifyModal({
+  order,
+  deliveryDate,
+  orderId,
+  queryClient,
+  onClose,
+}: {
+  order: OrderHistoryItem;
+  deliveryDate: DeliveryDateWithMenu;
+  orderId: string;
+  queryClient: QueryClient;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const plan = useMemo(
+    () => buildModifyPlan(order, deliveryDate.menuItems),
+    [order, deliveryDate],
+  );
+
+  const [editStates, setEditStates] = useState<ItemEditState[]>(() =>
+    plan.matched.map((m) => ({
+      selectedSize: m.menuItem.sizes?.[0]?.name ?? null,
+      selectedChoice: null,
+      selectedAdditions: [...m.additions],
+      selectedRemovals: [...m.removals],
+    })),
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  function updateSize(index: number, size: string) {
+    setEditStates((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, selectedSize: size } : s)),
+    );
+  }
+  function updateChoice(index: number, choice: string) {
+    setEditStates((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, selectedChoice: choice } : s)),
+    );
+  }
+  function toggleAddition(index: number, name: string) {
+    setEditStates((prev) =>
+      prev.map((s, i) => {
+        if (i !== index) return s;
+        const selectedAdditions = s.selectedAdditions.includes(name)
+          ? s.selectedAdditions.filter((x) => x !== name)
+          : [...s.selectedAdditions, name];
+        return { ...s, selectedAdditions };
+      }),
+    );
+  }
+  function toggleRemoval(index: number, name: string) {
+    setEditStates((prev) =>
+      prev.map((s, i) => {
+        if (i !== index) return s;
+        const selectedRemovals = s.selectedRemovals.includes(name)
+          ? s.selectedRemovals.filter((x) => x !== name)
+          : [...s.selectedRemovals, name];
+        return { ...s, selectedRemovals };
+      }),
+    );
+  }
+
+  async function handleSubmit() {
+    for (let i = 0; i < plan.matched.length; i++) {
+      const { menuItem } = plan.matched[i];
+      const state = editStates[i];
+      if ((menuItem.sizes?.length ?? 0) > 0 && !state.selectedSize) {
+        Alert.alert("Size required", `Please select a size for ${menuItem.name}.`);
+        return;
+      }
+      if ((menuItem.requiredChoices?.length ?? 0) > 0 && !state.selectedChoice) {
+        Alert.alert(
+          "Selection required",
+          `Please make a required selection for ${menuItem.name}.`,
+        );
+        return;
+      }
+    }
+    const items: ModifyOrderItem[] = plan.matched.map((m, i) => ({
+      menuItemId: m.menuItem.id,
+      ...(editStates[i].selectedChoice ? { choice: editStates[i].selectedChoice! } : {}),
+      ...(editStates[i].selectedSize ? { size: editStates[i].selectedSize! } : {}),
+      additions: editStates[i].selectedAdditions,
+      removals: editStates[i].selectedRemovals,
+    }));
+    try {
+      setSubmitting(true);
+      const result = await modifyOrder(orderId, items);
+      if (result.action === "updated") {
+        await queryClient.invalidateQueries({ queryKey: ["orders"] });
+        onClose();
+        Alert.alert("Order updated", "Your changes have been saved.");
+      } else {
+        // checkout_required — user pays the delta; do NOT navigate to /checkout/success
+        // which shows new-order celebration copy that is wrong here.
+        onClose();
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          result.checkoutUrl,
+          "lunchpad://checkout/success",
+        );
+        if (browserResult.type === "success") {
+          await queryClient.invalidateQueries({ queryKey: ["orders"] });
+          Alert.alert("Payment received", "Your order has been updated.");
+        }
+      }
+    } catch (err) {
+      Alert.alert(
+        "Couldn't update order",
+        err instanceof Error
+          ? err.message
+          : "Please try again or contact the restaurant.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={[modifyStyles.container, { backgroundColor: theme.dark }]}>
+        <View style={modifyStyles.handleRow}>
+          <View style={{ width: 60 }} />
+          <Text
+            style={[
+              modifyStyles.headerTitle,
+              { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+            ]}
+          >
+            Modify order
+          </Text>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityLabel="Close"
+            hitSlop={8}
+            style={{ width: 60, alignItems: "flex-end" }}
+          >
+            <Text style={[modifyStyles.closeText, { color: theme.textSecondary }]}>
+              Close
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={modifyStyles.scroll}>
+          {plan.unmatched.length > 0 && (
+            <View
+              style={[
+                modifyStyles.section,
+                { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.warning },
+              ]}
+            >
+              <Text style={[modifyStyles.sectionTitle, { color: theme.warning }]}>
+                Not editable ({plan.unmatched.length})
+              </Text>
+              <Text style={[modifyStyles.infoText, { color: theme.textSecondary }]}>
+                {plan.unmatched.map((u) => u.name).join(", ")}{" "}
+                {plan.unmatched.length === 1 ? "is" : "are"} no longer on the menu and
+                cannot be modified.
+              </Text>
+            </View>
+          )}
+
+          {plan.matched.map((m, idx) => {
+            const state = editStates[idx];
+            const sizes = m.menuItem.sizes ?? [];
+            const requiredChoices = m.menuItem.requiredChoices ?? [];
+            const additionOptions = m.menuItem.options.filter(
+              (o) => o.optionType === "ADD_ON" || o.optionType === "ADD",
+            );
+            const removalOptions = m.menuItem.options.filter(
+              (o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE",
+            );
+            const lineTotal = computeLineTotalCents(m.menuItem, {
+              size: state.selectedSize,
+              additions: state.selectedAdditions,
+            });
+            return (
+              <View
+                key={`modify-item-${idx}`}
+                style={[modifyStyles.section, { backgroundColor: theme.surface }]}
+              >
+                <View style={modifyStyles.itemHeader}>
+                  <Text
+                    style={[
+                      modifyStyles.itemName,
+                      { color: theme.textPrimary, fontFamily: theme.fontDisplay },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {m.menuItem.name}
+                  </Text>
+                  <Text style={[modifyStyles.itemPrice, { color: theme.primary }]}>
+                    {formatPrice(lineTotal)}
+                  </Text>
+                </View>
+
+                {sizes.length > 0 && (
+                  <View style={modifyStyles.optionGroup}>
+                    <Text style={[modifyStyles.optionTitle, { color: theme.textMuted }]}>
+                      SIZE <Text style={{ color: theme.accent }}>· required</Text>
+                    </Text>
+                    <View style={modifyStyles.chipGrid}>
+                      {sizes.map((sz) => {
+                        const on = state.selectedSize === sz.name;
+                        return (
+                          <TouchableOpacity
+                            key={sz.name}
+                            onPress={() => updateSize(idx, sz.name)}
+                            style={[
+                              modifyStyles.chip,
+                              {
+                                backgroundColor: on ? theme.primary : theme.dark,
+                                borderColor: on ? theme.primary : theme.border,
+                              },
+                            ]}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: on }}
+                          >
+                            <Text
+                              style={[
+                                modifyStyles.chipText,
+                                { color: on ? theme.textOnPrimary : theme.textPrimary },
+                              ]}
+                            >
+                              {sz.name}
+                            </Text>
+                            <Text
+                              style={[
+                                modifyStyles.chipSub,
+                                { color: on ? theme.textOnPrimary : theme.textMuted },
+                              ]}
+                            >
+                              {formatPrice(sz.priceCents)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {requiredChoices.length > 0 && (
+                  <View style={modifyStyles.optionGroup}>
+                    <Text style={[modifyStyles.optionTitle, { color: theme.textMuted }]}>
+                      CHOICE <Text style={{ color: theme.accent }}>· required</Text>
+                    </Text>
+                    <View style={modifyStyles.chipGrid}>
+                      {requiredChoices.map((choice) => {
+                        const on = state.selectedChoice === choice;
+                        return (
+                          <TouchableOpacity
+                            key={choice}
+                            onPress={() => updateChoice(idx, choice)}
+                            style={[
+                              modifyStyles.chip,
+                              {
+                                backgroundColor: on ? theme.primary : theme.dark,
+                                borderColor: on ? theme.primary : theme.border,
+                              },
+                            ]}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: on }}
+                          >
+                            <Text
+                              style={[
+                                modifyStyles.chipText,
+                                { color: on ? theme.textOnPrimary : theme.textPrimary },
+                              ]}
+                            >
+                              {choice}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {additionOptions.length > 0 && (
+                  <View style={modifyStyles.optionGroup}>
+                    <Text style={[modifyStyles.optionTitle, { color: theme.textMuted }]}>
+                      ADDITIONS
+                    </Text>
+                    <View style={modifyStyles.chipGrid}>
+                      {additionOptions.map((opt) => {
+                        const on = state.selectedAdditions.includes(opt.name);
+                        return (
+                          <TouchableOpacity
+                            key={opt.id}
+                            onPress={() => toggleAddition(idx, opt.name)}
+                            style={[
+                              modifyStyles.chip,
+                              {
+                                backgroundColor: on ? theme.primary : theme.dark,
+                                borderColor: on ? theme.primary : theme.border,
+                              },
+                            ]}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: on }}
+                          >
+                            <Text
+                              style={[
+                                modifyStyles.chipText,
+                                { color: on ? theme.textOnPrimary : theme.textPrimary },
+                              ]}
+                            >
+                              {opt.name}
+                            </Text>
+                            {opt.priceDeltaCents > 0 && (
+                              <Text
+                                style={[
+                                  modifyStyles.chipSub,
+                                  { color: on ? theme.textOnPrimary : theme.textMuted },
+                                ]}
+                              >
+                                +{formatPrice(opt.priceDeltaCents)}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {removalOptions.length > 0 && (
+                  <View style={modifyStyles.optionGroup}>
+                    <Text style={[modifyStyles.optionTitle, { color: theme.textMuted }]}>
+                      REMOVE
+                    </Text>
+                    <View style={modifyStyles.chipGrid}>
+                      {removalOptions.map((opt) => {
+                        const on = state.selectedRemovals.includes(opt.name);
+                        return (
+                          <TouchableOpacity
+                            key={opt.id}
+                            onPress={() => toggleRemoval(idx, opt.name)}
+                            style={[
+                              modifyStyles.chip,
+                              {
+                                backgroundColor: on ? theme.primary : theme.dark,
+                                borderColor: on ? theme.primary : theme.border,
+                              },
+                            ]}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: on }}
+                          >
+                            <Text
+                              style={[
+                                modifyStyles.chipText,
+                                { color: on ? theme.textOnPrimary : theme.textPrimary },
+                              ]}
+                            >
+                              {opt.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+
+          {plan.matched.length === 0 && plan.unmatched.length === 0 && (
+            <View style={[modifyStyles.section, { backgroundColor: theme.surface }]}>
+              <Text style={[modifyStyles.infoText, { color: theme.textSecondary }]}>
+                No items found for this order.
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <SafeAreaView
+          style={[
+            modifyStyles.footer,
+            { backgroundColor: theme.dark, borderTopColor: theme.border },
+          ]}
+        >
+          <TouchableOpacity
+            style={[
+              modifyStyles.actionBtn,
+              {
+                backgroundColor:
+                  plan.matched.length > 0 && !submitting ? theme.primary : theme.border,
+              },
+            ]}
+            onPress={handleSubmit}
+            disabled={plan.matched.length === 0 || submitting}
+            accessibilityRole="button"
+            accessibilityLabel="Save changes"
+          >
+            {submitting ? (
+              <ActivityIndicator color={theme.textOnPrimary} />
+            ) : (
+              <Text
+                style={[
+                  modifyStyles.actionBtnText,
+                  {
+                    color:
+                      plan.matched.length > 0 ? theme.textOnPrimary : theme.textMuted,
+                  },
+                ]}
+              >
+                {plan.matched.length > 0 ? "Save changes" : "No items can be modified"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
+const modifyStyles = StyleSheet.create({
+  container: { flex: 1 },
+  handleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
+  closeText: { fontSize: 14, fontWeight: "600" },
+  scroll: { paddingHorizontal: 16, paddingBottom: 24, gap: 16 },
+  section: { borderRadius: 16, padding: 16, gap: 12 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  itemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  itemName: { fontSize: 16, fontWeight: "700", flex: 1 },
+  itemPrice: { fontSize: 16, fontWeight: "700" },
+  optionGroup: { gap: 8 },
+  optionTitle: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: "center",
+  },
+  chipText: { fontSize: 14, fontWeight: "600" },
+  chipSub: { fontSize: 11, marginTop: 1 },
+  infoText: { fontSize: 14, lineHeight: 20 },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 6,
+    borderTopWidth: 1,
+  },
+  actionBtn: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionBtnText: { fontSize: 15, fontWeight: "700" },
+});
+
 
 const reorderStyles = StyleSheet.create({
   container: { flex: 1 },

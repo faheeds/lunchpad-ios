@@ -311,3 +311,23 @@ export const createOrder = (data: {
 /** Permanently deletes the signed-in parent's account (App Store 5.1.1(v)). */
 export const deleteAccount = () =>
   apiDelete<{ ok: true }>("/api/mobile/native/account");
+
+// ── Order modification ───────────────────────────────────────────────────────
+
+export type ModifyOrderItem = {
+  menuItemId: string;
+  choice?: string;
+  size?: string;
+  additions?: string[];
+  removals?: string[];
+};
+
+export type ModifyOrderResponse =
+  | { action: "updated"; order: OrderHistoryItem }
+  | { action: "checkout_required"; checkoutUrl: string };
+
+export const modifyOrder = (orderId: string, items: ModifyOrderItem[]) =>
+  apiPatch<ModifyOrderResponse>(
+    `/api/mobile/native/orders/${encodeURIComponent(orderId)}`,
+    { items },
+  );
