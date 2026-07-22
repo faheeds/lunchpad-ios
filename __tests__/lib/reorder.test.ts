@@ -456,3 +456,187 @@ describe("reorderMissingReasonLabel", () => {
     expect(out).toBe("Please add manually");
   });
 });
+
+// ── Choice recovery (new behavior) ────────────────────────────────────────────
+//
+// The web backend stores a required-choice selection by prepending it into
+// the additions array: additions = choice ? [choice, ...additions] : additions.
+// planReorder now recovers it via MenuItem.requiredChoices before giving up.
+
+/** Menu item with requiredChoices AND an ADD_ON option — needed to test that
+ *  the recovered choice is NOT double-counted as a plain add-on in the price. */
+const extraSauce: MenuOption = {
+  id: "opt-extra-sauce",
+  name: "Extra Sauce",
+  optionType: "ADD_ON",
+  priceDeltaCents: 75,
+};
+const smashBurger: MenuItem = {
+  id: "item-smash",
+  slug: "smash-burger",
+  name: "Smash Burger",
+  description: null,
+  imageUrl: null,
+  basePriceCents: 1299,
+  options: [extraSauce],
+  requiredChoices: ["Beef", "Chicken", "Vegan"],
+};
+
+describe("planReorder — choice recovery from additions", () => {
+  test("choice + extra addition → cloneable, choice stripped from additions", () => {
+    // History: additions = [choice, ...actualAddons] per web backend encoding.
+    const order = makeOrder([
+      {
+        name: "Smash Burger",
+        lineTotalCents: 1374,
+        additions: ["Beef", "Extra Sauce"],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [smashBurger]);
+    expect(plan.missing).toHaveLength(0);
+    expect(plan.cloneable).toHaveLength(1);
+    expect(plan.cloneable[0].choice).toBe("Beef");
+    expect(plan.cloneable[0].additions).toEqual(["Extra Sauce"]);
+  });
+
+  test("lineTotalCents reflects Extra Sauce only — choice not double-counted as add-on", () => {
+    // basePriceCents(1299) + extraSauce.priceDeltaCents(75) = 1374.
+    // "Beef" is NOT an ADD/ADD_ON option on smashBurger, so it wouldn't be
+    // priced even if included — but it's stripped for semantic correctness.
+    const order = makeOrder([
+      {
+        name: "Smash Burger",
+        lineTotalCents: 9999, // historical value deliberately wrong
+        additions: ["Beef", "Extra Sauce"],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [smashBurger]);
+    expect(plan.cloneable[0].lineTotalCents).toBe(1299 + 75); // 1374
+  });
+
+  test("first matching choice wins when multiple choice values appear in additions", () => {
+    // Edge case: history has ["Beef", "Chicken"] — both valid choices.
+    // Array.prototype.find returns the first match → "Beef" is recovered,
+    // "Chicken" remains in additions (treated as a surviving addition).
+    const order = makeOrder([
+      {
+        name: "Smash Burger",
+        lineTotalCents: 1299,
+        additions: ["Beef", "Chicken"],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [smashBurger]);
+    expect(plan.cloneable).toHaveLength(1);
+    expect(plan.cloneable[0].choice).toBe("Beef");
+    expect(plan.cloneable[0].additions).toEqual(["Chicken"]);
+  });
+
+  test("fallback: no choice value in additions → missing (requires-choice)", () => {
+    // Additions contains only a real add-on, not a choice value.
+    const order = makeOrder([
+      {
+        name: "Smash Burger",
+        lineTotalCents: 1374,
+        additions: ["Extra Sauce"],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [smashBurger]);
+    expect(plan.cloneable).toHaveLength(0);
+    expect(plan.missing).toEqual([
+      { name: "Smash Burger", reason: "requires-choice" },
+    ]);
+  });
+
+  test("fallback: empty additions with requiredChoices → missing (requires-choice)", () => {
+    const order = makeOrder([
+      {
+        name: "Bowl",
+        lineTotalCents: 900,
+        additions: [],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [bowl]);
+    expect(plan.cloneable).toHaveLength(0);
+    expect(plan.missing).toEqual([
+      { name: "Bowl", reason: "requires-choice" },
+    ]);
+  });
+
+  test("non-choice additions preserve relative order after choice stripped", () => {
+    // "Beef" (choice) appears between two real add-ons; both survive in order.
+    const doubleExtraSauce: MenuOption = {
+      id: "opt-double-sauce",
+      name: "Double Sauce",
+      optionType: "ADD_ON",
+      priceDeltaCents: 50,
+    };
+    const burgerWithExtras: MenuItem = {
+      ...smashBurger,
+      id: "item-extras",
+      name: "Extras Burger",
+      options: [extraSauce, doubleExtraSauce],
+    };
+    const order = makeOrder([
+      {
+        name: "Extras Burger",
+        lineTotalCents: 1299,
+        additions: ["Extra Sauce", "Beef", "Double Sauce"],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [burgerWithExtras]);
+    expect(plan.cloneable).toHaveLength(1);
+    expect(plan.cloneable[0].choice).toBe("Beef");
+    // Original order minus "Beef", preserving relative order.
+    expect(plan.cloneable[0].additions).toEqual(["Extra Sauce", "Double Sauce"]);
+  });
+
+  test("choice only (no other additions) → cloneable, additions: [], price = basePriceCents", () => {
+    const order = makeOrder([
+      {
+        name: "Bowl",
+        lineTotalCents: 900,
+        additions: ["Chicken"],
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [bowl]);
+    expect(plan.cloneable).toHaveLength(1);
+    expect(plan.cloneable[0].choice).toBe("Chicken");
+    expect(plan.cloneable[0].additions).toEqual([]);
+    expect(plan.cloneable[0].lineTotalCents).toBe(900); // basePriceCents only
+  });
+
+  test("item with no requiredChoices goes through normal path — recovery logic does not interfere", () => {
+    // `fries` has no requiredChoices — must still clone normally.
+    const order = makeOrder([
+      { name: "Fries", lineTotalCents: 600, additions: ["Cheese"], removals: [] },
+    ]);
+    const plan = planReorder(order, [fries]);
+    expect(plan.cloneable).toHaveLength(1);
+    expect(plan.cloneable[0].choice).toBeUndefined();
+    expect(plan.cloneable[0].additions).toEqual(["Cheese"]);
+    expect(plan.cloneable[0].lineTotalCents).toBe(500 + 100); // base + cheese
+  });
+
+  test("case-sensitive: 'beef' does NOT match requiredChoices ['Beef'] → missing", () => {
+    const order = makeOrder([
+      {
+        name: "Bowl",
+        lineTotalCents: 900,
+        additions: ["beef"], // lowercase — no match
+        removals: [],
+      },
+    ]);
+    const plan = planReorder(order, [bowl]);
+    expect(plan.cloneable).toHaveLength(0);
+    expect(plan.missing).toEqual([
+      { name: "Bowl", reason: "requires-choice" },
+    ]);
+  });
+});
