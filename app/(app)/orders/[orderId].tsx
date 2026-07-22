@@ -142,6 +142,7 @@ export default function OrderDetail() {
           menuItemId: line.menuItem.id,
           itemName: line.menuItem.name,
           basePriceCents: line.menuItem.basePriceCents,
+          choice: line.choice,
           additions: line.additions,
           removals: line.removals,
           lineTotalCents: line.lineTotalCents,

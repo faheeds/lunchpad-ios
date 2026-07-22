@@ -13,16 +13,28 @@
  *
  * Why this can't be a simple menuItemId lookup:
  *   `OrderHistoryItem.items` is deliberately minimal — it carries only
- *   `{ name, lineTotalCents, additions, removals }`. No menuItemId,
- *   no size, no choice. So the only way to recover the underlying
- *   MenuItem is a case-sensitive match by `name` against the current
- *   menu (strict equality is safest against false positives — a
- *   sound-alike item at a different price would be wrong).
+ *   `{ name, lineTotalCents, additions, removals }`. No menuItemId and
+ *   no size. Choice IS recoverable: the web backend stores required-choice
+ *   selections by prepending the chosen value into the additions array, so
+ *   `orderItem.additions` already contains the original choice. We
+ *   disambiguate using `MenuItem.requiredChoices` — any addition that
+ *   matches is the recovered choice; we strip it before forwarding to the
+ *   cart so it travels as `choice`, not as a plain add-on.
  *
- * When a matched item requires a `size` or a `choice`, we cannot safely
- * clone: the original selection wasn't preserved. Same for items that
- * simply aren't on the current menu. All such lines go to `missing`
- * with a reason code so the UI can explain what happened.
+ *   Size is NOT recoverable from history: `sizeName` is a real separate
+ *   field on the web side but is not currently exposed by
+ *   GET /api/mobile/native/orders. That's a separate coordinated fix
+ *   across both repos.
+ *
+ *   So the only way to recover the underlying MenuItem is a case-sensitive
+ *   match by `name` against the current menu (strict equality is safest
+ *   against false positives — a sound-alike item at a different price would
+ *   be wrong).
+ *
+ * When a matched item requires a `size` we cannot safely clone: the
+ * original size selection isn't available from the history endpoint.
+ * Required-choice items ARE handled — see above. Items simply not on
+ * the current menu go to `missing` as well.
  *
  * Pricing drift is expected and silent: we ignore the historical
  * `lineTotalCents` and re-price from the current menu. If the base
@@ -46,6 +58,9 @@ export type ReorderMissingReason =
 
 export type ReorderCloneable = {
   menuItem: MenuItem;
+  /** Recovered required-choice value (stripped from additions before
+   *  pricing so it isn't double-counted as a plain add-on). */
+  choice?: string;
   additions: string[];
   removals: string[];
   /** Recomputed against the CURRENT menu — do not carry across the
@@ -93,8 +108,38 @@ export function planReorder(
     }
 
     if ((match.requiredChoices?.length ?? 0) > 0) {
-      // Original choice wasn't preserved either.
-      missing.push({ name: orderItem.name, reason: "requires-choice" });
+      // The web backend prepends the chosen value into the additions array
+      // (choice ? [choice, ...additions] : additions), so the original
+      // selection is recoverable: find the first addition that appears in
+      // requiredChoices.
+      const recoveredChoice = orderItem.additions.find(
+        (a) => match.requiredChoices!.includes(a),
+      );
+      if (!recoveredChoice) {
+        // No match — data inconsistency, or requiredChoices changed since
+        // the original order was placed.
+        missing.push({ name: orderItem.name, reason: "requires-choice" });
+        continue;
+      }
+      // Strip the choice value from additions before pricing and before
+      // forwarding to the cart — it must travel as `choice`, not as a
+      // plain add-on. (Pricing note: even if it weren't stripped, the
+      // pricing function only counts ADD/ADD_ON option types, and required
+      // choices are not in that set, so it wouldn't inflate the total.
+      // Stripping is still required for semantic correctness — the cart's
+      // `choice` field and `additions` field are distinct.)
+      const additionsWithoutChoice = orderItem.additions.filter(
+        (a) => a !== recoveredChoice,
+      );
+      cloneable.push({
+        menuItem: match,
+        choice: recoveredChoice,
+        additions: additionsWithoutChoice,
+        removals: orderItem.removals,
+        lineTotalCents: computeLineTotalCents(match, {
+          additions: additionsWithoutChoice,
+        }),
+      });
       continue;
     }
 
