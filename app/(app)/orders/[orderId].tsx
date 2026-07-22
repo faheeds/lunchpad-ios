@@ -807,7 +807,7 @@ function ModifyModal({
 
   const [editStates, setEditStates] = useState<ItemEditState[]>(() =>
     plan.matched.map((m) => ({
-      selectedSize: m.menuItem.sizes?.[0]?.name ?? null,
+      selectedSize: null,
       selectedChoice: null,
       selectedAdditions: [...m.additions],
       selectedRemovals: [...m.removals],
