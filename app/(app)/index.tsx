@@ -18,7 +18,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans } from "../../lib/api";
+import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
 import { BrandMark } from "../../components/BrandMark";
 import { FoodImage } from "../../components/FoodImage";
@@ -81,6 +81,7 @@ export default function HomeScreen() {
   const datesQ = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
   const accountQ = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
   const weeklyQ = useQuery({ queryKey: ["weekly-plans"], queryFn: fetchWeeklyPlans, retry: false });
+  const ordersQ = useQuery({ queryKey: ["orders"], queryFn: fetchOrders, retry: false });
 
   const dates = datesQ.data ?? [];
   const nextDate = dates[0];
@@ -88,8 +89,15 @@ export default function HomeScreen() {
   const firstName = accountQ.data?.name?.trim().split(/\s+/)[0];
   const restaurantName = theme.restaurant?.name;
 
-  const plannedCount = weeklyQ.data?.plans.length ?? 0;
   const weekDayCount = weeklyQ.data?.deliveryDates.length ?? 0;
+  const weeklyDateIds = new Set((weeklyQ.data?.deliveryDates ?? []).map((d) => d.id));
+  const orderedDayCount = (ordersQ.data ?? []).filter(
+    (o) =>
+      o.deliveryDateId != null &&
+      weeklyDateIds.has(o.deliveryDateId) &&
+      o.status !== "CANCELLED",
+  ).length;
+  const plannedCount = (weeklyQ.data?.plans.length ?? 0) + orderedDayCount;
   const weeklyProgress = weekDayCount > 0 ? Math.min(1, plannedCount / weekDayCount) : 0;
 
   function goToDate(id: string) {

@@ -26,6 +26,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import {
   fetchWeeklyPlans,
+  fetchOrders,
   upsertWeeklyPlan,
   deleteWeeklyPlan,
   createWeeklyCheckout,
@@ -35,10 +36,12 @@ import { computeLineTotalCents } from "../../lib/pricing";
 import { useTheme } from "../../lib/theme";
 import type {
   MenuItem,
+  OrderHistoryItem,
   WeeklyDeliveryDate,
   WeeklyPlan,
   WeeklyPlansBundle,
 } from "../../lib/types";
+import { countDoneSlots } from "../../lib/weeklyPlanSlot";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
@@ -55,6 +58,12 @@ const ALL_WEEKDAYS = [
 function getWeekdayFromISO(iso: string): number {
   const dow = new Date(iso).getUTCDay();
   return dow === 0 ? 7 : dow;
+}
+
+const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtShortDate(iso: string): string {
+  const d = new Date(iso);
+  return `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
 /** Per-meal price for a saved plan. Thin adapter around
@@ -81,6 +90,13 @@ export default function WeeklyPlanScreen() {
     queryKey: ["weekly-plans"],
     queryFn: fetchWeeklyPlans,
   });
+
+  const ordersQ = useQuery({
+    queryKey: ["orders"],
+    queryFn: fetchOrders,
+    retry: false,
+  });
+  const orders = ordersQ.data ?? [];
 
   const activeChildId = selectedChildId ?? data?.children[0]?.id ?? null;
 
@@ -158,6 +174,7 @@ export default function WeeklyPlanScreen() {
         weekday: (typeof ALL_WEEKDAYS)[number];
         date: WeeklyDeliveryDate;
         plans: WeeklyPlan[];
+        order: OrderHistoryItem | null;
       }>;
     return ALL_WEEKDAYS.flatMap((w) => {
       const date = data.deliveryDates.find(
@@ -165,9 +182,18 @@ export default function WeeklyPlanScreen() {
       );
       if (!date) return [];
       const plans = childPlans.filter((p) => p.weekday === w.num);
-      return [{ weekday: w, date, plans }];
+      const order =
+        orders.find(
+          (o) =>
+            o.parentChildId != null &&
+            o.parentChildId === activeChildId &&
+            o.deliveryDateId != null &&
+            o.deliveryDateId === date.id &&
+            o.status !== "CANCELLED",
+        ) ?? null;
+      return [{ weekday: w, date, plans, order }];
     });
-  }, [data, activeChild, childPlans]);
+  }, [data, activeChild, childPlans, orders, activeChildId]);
 
   const totalCents = useMemo(() => {
     if (!data) return 0;
@@ -188,6 +214,7 @@ export default function WeeklyPlanScreen() {
 
   const activePlanCount = data?.plans.length ?? 0;
   const childPlanCount = childPlans.length;
+  const childDoneCount = countDoneSlots(weekdaySlots);
 
   async function handleCheckout() {
     if (activePlanCount === 0) {
@@ -254,7 +281,7 @@ export default function WeeklyPlanScreen() {
     );
   }
 
-  const progress = weekdaySlots.length > 0 ? Math.min(1, childPlanCount / weekdaySlots.length) : 0;
+  const progress = weekdaySlots.length > 0 ? Math.min(1, childDoneCount / weekdaySlots.length) : 0;
   const activeFirstName = activeChild?.studentName.trim().split(/\s+/)[0];
 
   return (
@@ -274,7 +301,7 @@ export default function WeeklyPlanScreen() {
                 />
               </View>
               <Text style={[s.progressText, { color: theme.textSecondary }]}>
-                {childPlanCount} of {weekdaySlots.length} day{weekdaySlots.length === 1 ? "" : "s"}{" "}
+                {childDoneCount} of {weekdaySlots.length} day{weekdaySlots.length === 1 ? "" : "s"}{" "}
                 planned{activeFirstName ? ` for ${activeFirstName}` : ""}
               </Text>
             </>
@@ -326,15 +353,60 @@ export default function WeeklyPlanScreen() {
               </Text>
             </Card>
           ) : (
-            weekdaySlots.map(({ weekday: w, date, plans }) => (
+            weekdaySlots.map(({ weekday: w, date, plans, order }) => (
               <View key={w.num} style={s.daySlot}>
                 <View style={s.dayHeader}>
                   <View style={[s.dayChip, { backgroundColor: theme.dark }]}>
                     <Text style={[s.dayChipText, { color: theme.primary }]}>{w.label}</Text>
                   </View>
                   <Text style={[s.dayName, { color: theme.textPrimary }]}>{w.long}</Text>
+                  <Text style={[s.dayDate, { color: theme.textMuted }]}>{fmtShortDate(date.deliveryDate)}</Text>
                 </View>
-                {plans.map((plan) => {
+
+                {/* Ordered state \u2014 tap-through to order detail, no edit affordance */}
+                {order ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/orders/[orderId]",
+                        params: { orderId: order.id },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`View order for ${w.long}`}
+                  >
+                    <Card style={s.planRow}>
+                      {(() => {
+                        const firstItem = order.items[0];
+                        const menuMatch = firstItem
+                          ? date.menuItems.find((m) => m.name === firstItem.name)
+                          : undefined;
+                        return (
+                          <FoodImage
+                            uri={menuMatch?.imageUrl ?? null}
+                            seed={date.id}
+                            size={44}
+                            radius={10}
+                          />
+                        );
+                      })()}
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.slotName, { color: theme.textPrimary }]} numberOfLines={1}>
+                          {order.items.map((i) => i.name).join(", ")}
+                        </Text>
+                        <Text style={[s.slotPrice, { color: theme.textSecondary }]} numberOfLines={1}>
+                          Ordered \u00b7 {formatPrice(order.totalCents)}
+                        </Text>
+                      </View>
+                      <Ionicons name="checkmark-circle" size={22} color={theme.success} />
+                      <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+                    </Card>
+                  </TouchableOpacity>
+                ) : null}
+
+                {/* Draft plan rows \u2014 only when not already ordered */}
+                {!order ? plans.map((plan) => {
                   const item = date.menuItems.find((m) => m.id === plan.menuItemId);
                   const meta = [plan.size, plan.choice].filter(Boolean).join(" \u00b7 ");
                   const price = formatPrice(resolvePlanPrice(plan, item));
@@ -370,26 +442,30 @@ export default function WeeklyPlanScreen() {
                       </TouchableOpacity>
                     </Card>
                   );
-                })}
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    if (!activeChildId) return;
-                    Haptics.selectionAsync().catch(() => {});
-                    setPickerOpen({ weekday: w.num, childId: activeChildId });
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    plans.length ? `Add another meal for ${w.long}` : `Add ${w.long} meal`
-                  }
-                >
-                  <View style={[s.addRow, { borderColor: theme.accent }]}>
-                    <Ionicons name="add-circle-outline" size={18} color={theme.accent} />
-                    <Text style={[s.addRowText, { color: theme.accent }]}>
-                      {plans.length ? "Add another meal" : `Add ${w.long}\u2019s meal`}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                }) : null}
+
+                {/* Add row \u2014 hidden when already ordered */}
+                {!order ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (!activeChildId) return;
+                      Haptics.selectionAsync().catch(() => {});
+                      setPickerOpen({ weekday: w.num, childId: activeChildId });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      plans.length ? `Add another meal for ${w.long}` : `Add ${w.long} meal`
+                    }
+                  >
+                    <View style={[s.addRow, { borderColor: theme.accent }]}>
+                      <Ionicons name="add-circle-outline" size={18} color={theme.accent} />
+                      <Text style={[s.addRowText, { color: theme.accent }]}>
+                        {plans.length ? "Add another meal" : `Add ${w.long}\u2019s meal`}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ))
           )}
@@ -764,6 +840,7 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     dayChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
     dayChipText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
     dayName: { fontSize: 14, fontWeight: "700" },
+    dayDate: { fontSize: 12, marginLeft: "auto" as const },
     planRow: { flexDirection: "row", alignItems: "center", gap: 11, padding: 10 },
     addRow: {
       flexDirection: "row",
