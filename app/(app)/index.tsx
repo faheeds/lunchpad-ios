@@ -170,28 +170,36 @@ export default function HomeScreen() {
           {/* Next up */}
           {nextDate ? (
             <Card style={[s.nextCard, nextUrgent && { borderColor: theme.accent }]}>
-              <View style={s.nextHead}>
-                <Eyebrow>Next lunch</Eyebrow>
-                {nextUrgent ? (
-                  <Pill
-                    label={`Cutoff in ${Math.max(1, Math.ceil(hoursUntil(nextDate.cutoffAt)))}h`}
-                    tone="urgent"
-                  />
-                ) : null}
-              </View>
-              <Text
-                style={[s.nextTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
-              >
-                {fmtLong(nextDate.deliveryDate)}
-              </Text>
-              <Text style={[s.nextSub, { color: theme.textSecondary }]}>
-                {nextDate.school.name} · order by {fmtCutoff(nextDate.cutoffAt)}
-              </Text>
-              <PrimaryButton
-                label="Choose this day's lunch"
-                onPress={() => goToDate(nextDate.id)}
-                style={{ marginTop: 12 }}
+              <FoodImage
+                uri={nextDate.menuItems[0]?.imageUrl}
+                seed={nextDate.id}
+                style={s.nextHero}
+                radius={0}
               />
+              <View style={s.nextBody}>
+                <View style={s.nextHead}>
+                  <Eyebrow>Next lunch</Eyebrow>
+                  {nextUrgent ? (
+                    <Pill
+                      label={`Cutoff in ${Math.max(1, Math.ceil(hoursUntil(nextDate.cutoffAt)))}h`}
+                      tone="urgent"
+                    />
+                  ) : null}
+                </View>
+                <Text
+                  style={[s.nextTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+                >
+                  {fmtLong(nextDate.deliveryDate)}
+                </Text>
+                <Text style={[s.nextSub, { color: theme.textSecondary }]}>
+                  {nextDate.school.name} · order by {fmtCutoff(nextDate.cutoffAt)}
+                </Text>
+                <PrimaryButton
+                  label="Choose this day's lunch"
+                  onPress={() => goToDate(nextDate.id)}
+                  style={{ marginTop: 12 }}
+                />
+              </View>
             </Card>
           ) : null}
 
@@ -327,7 +335,9 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     greetSmall: { fontSize: 13, fontWeight: "600" },
     greetBig: { fontSize: 26, fontWeight: "600", letterSpacing: -0.5, marginTop: 1 },
 
-    nextCard: { padding: 16 },
+    nextCard: { overflow: "hidden" },
+    nextHero: { width: "100%", height: 148 },
+    nextBody: { padding: 16 },
     nextHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     nextTitle: { fontSize: 20, fontWeight: "600", letterSpacing: -0.3, marginTop: 8 },
     nextSub: { fontSize: 13.5, marginTop: 3 },

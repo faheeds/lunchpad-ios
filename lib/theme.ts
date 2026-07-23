@@ -124,16 +124,16 @@ const NEUTRAL_TYPE_SCALE: TypographyScale = {
 const NEUTRAL_THEME: Theme = {
   restaurant: null,
 
-  primary: "#2C4031",            // deep green — editorial primary
-  accent: "#C0673E",             // clay — editorial accent
-  dark: "#F6F1E6",               // warm cream — light background
+  primary: "#C1502E",            // terracotta — editorial primary
+  accent: "#C1502E",             // terracotta — editorial accent
+  dark: "#F1E8D6",               // warm cream — light background
   surface: "#FFFFFF",            // white — card background
   surfaceElevated: "#FEFBF6",    // pale cream — modals / raised
 
-  textPrimary: "#211D15",        // deep ink — primary text
-  textSecondary: "#5B5651",      // warm gray — secondary text
-  textMuted: "#8A8580",          // muted warm gray — labels, placeholders
-  textOnPrimary: "#FFFFFF",      // white text on green CTA
+  textPrimary: "#241F1B",        // deep ink — primary text
+  textSecondary: "#6B6259",      // warm midtone — secondary text
+  textMuted: "#8A8072",          // muted warm — labels, placeholders
+  textOnPrimary: "#FFFFFF",      // white text on terracotta CTA
 
   danger: "#DC2626",             // red — errors, warnings
   success: "#059669",            // green — confirmations, paid
