@@ -9,7 +9,7 @@ import { useRouter } from "expo-router";
 import { useTheme } from "../../lib/theme";
 import { BrandMark } from "../../components/BrandMark";
 
-const CREAM = "#F6F1E6";
+const CREAM = "#F1E8D6";
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -63,9 +63,9 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 16 },
   wordmark: { fontSize: 14, fontWeight: "700", letterSpacing: 2 },
   headline: { fontSize: 34, fontWeight: "600", letterSpacing: -0.5, lineHeight: 41 },
-  sub: { fontSize: 15, lineHeight: 22, marginTop: 12, marginBottom: 26, color: "rgba(246,241,230,0.78)" },
+  sub: { fontSize: 15, lineHeight: 22, marginTop: 12, marginBottom: 26, color: "rgba(241,232,214,0.78)" },
   primary: { borderRadius: 15, paddingVertical: 16, alignItems: "center" },
   primaryText: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
   secondary: { paddingVertical: 14, alignItems: "center", marginTop: 4 },
-  secondaryText: { fontSize: 14, fontWeight: "600", color: "rgba(246,241,230,0.85)" },
+  secondaryText: { fontSize: 14, fontWeight: "600", color: "rgba(241,232,214,0.85)" },
 });
