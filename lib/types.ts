@@ -137,6 +137,12 @@ export type OrderHistoryItem = {
   totalCents: number;
   createdAt: string;
   items: { name: string; lineTotalCents: number; additions: string[]; removals: string[] }[];
+  /** Which child this order is for — present on orders placed after this
+   *  field was added to the web endpoint. Absent on historical orders. */
+  parentChildId?: string;
+  /** Which delivery date slot this order occupies — used to cross-reference
+   *  against weekly plan slots. Absent on pre-rollout orders. */
+  deliveryDateId?: string;
 };
 
 // ── Weekly plan bundle ───────────────────────────────────────────────────────
