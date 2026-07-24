@@ -113,6 +113,19 @@ export default function CheckoutSuccess() {
 
           <View style={s.momentum}>
             <Eyebrow>Keep the momentum</Eyebrow>
+            {orderId ? (
+              <MomentumCard
+                icon="receipt-outline"
+                title="View or modify your order"
+                sub="Cancel or change items before the cutoff"
+                onPress={() =>
+                  router.replace({
+                    pathname: "/(app)/orders/[orderId]",
+                    params: { orderId },
+                  })
+                }
+              />
+            ) : null}
             <MomentumCard
               icon="calendar-outline"
               title="Plan the rest of the week"
@@ -130,11 +143,10 @@ export default function CheckoutSuccess() {
           {supportEmail ? (
             <Card style={s.help}>
               <Text style={[s.helpTitle, { color: theme.textPrimary }]}>
-                Need to change something?
+                Other questions?
               </Text>
               <Text style={[s.helpText, { color: theme.textSecondary }]}>
-                Reach out to {restaurantName ?? "the kitchen"} before the cutoff and they&apos;ll
-                make it right.
+                {restaurantName ?? "The kitchen"} is here for anything self-serve can&apos;t cover.
               </Text>
               <TouchableOpacity
                 onPress={() => Linking.openURL(`mailto:${supportEmail}`)}
