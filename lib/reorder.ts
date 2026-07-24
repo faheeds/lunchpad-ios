@@ -163,6 +163,33 @@ export function planReorder(
 }
 
 /**
+ * Block-level summary shown in the reorder panel when no items could be
+ * cloned automatically (nothingCloneable). Derives wording from the actual
+ * reasons so we never say "not available" for items that are on the menu
+ * but need a manual selection.
+ *
+ * @param missing  The plan.missing array (guaranteed non-empty at call site).
+ * @param formattedDate  Pre-formatted delivery date string (e.g. "Monday, Jul 28")
+ *                       — only used in the not-on-menu case.
+ */
+export function reorderSummaryMessage(
+  missing: ReorderMissing[],
+  formattedDate: string,
+): string {
+  const allNotOnMenu = missing.every((m) => m.reason === "not-on-menu");
+  const noneNotOnMenu = missing.every((m) => m.reason !== "not-on-menu");
+
+  if (allNotOnMenu) {
+    return `None of these items are available on ${formattedDate}.`;
+  }
+  if (noneNotOnMenu) {
+    return "These items need a selection before adding — please add them from the menu.";
+  }
+  // Mixed: some not-on-menu, some require manual selection
+  return "Some items aren't on this menu, and others need a manual selection — please review the list above.";
+}
+
+/**
  * Human-readable reason label for a missing item — used by the UI so we
  * only spell the copy once.
  */
