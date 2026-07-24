@@ -300,7 +300,7 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
     title: { fontSize: 25, fontWeight: "600", letterSpacing: -0.5 },
     sub: { fontSize: 13, marginTop: 1 },
-    chipRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+    chipRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
     list: { paddingHorizontal: 16, paddingBottom: 24 },
     sectionHead: {
       flexDirection: "row",
