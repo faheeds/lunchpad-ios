@@ -895,17 +895,21 @@ function ModifyModal({
         onClose();
         Alert.alert("Order updated", "Your changes have been saved.");
       } else {
-        // checkout_required — user pays the delta; do NOT navigate to /checkout/success
-        // which shows new-order celebration copy that is wrong here.
-        onClose();
+        // checkout_required — open browser BEFORE closing the modal.
+        // Calling onClose() first triggers the pageSheet dismissal animation;
+        // iOS then refuses to present SFSafariViewController mid-dismiss and
+        // openAuthSessionAsync returns {type:"cancel"} without showing anything.
         const browserResult = await WebBrowser.openAuthSessionAsync(
           result.checkoutUrl,
           "lunchpad://checkout/success",
         );
         if (browserResult.type === "success") {
           await queryClient.invalidateQueries({ queryKey: ["orders"] });
+          onClose();
           Alert.alert("Payment received", "Your order has been updated.");
         }
+        // On cancel/dismiss, user returns to the modify modal with selections
+        // intact and can retry — submitting resets via the finally block.
       }
     } catch (err) {
       Alert.alert(
