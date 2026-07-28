@@ -6,7 +6,7 @@
  * dead-ending at "Back to menu".
  */
 
-import { useEffect, useRef, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../lib/theme";
 import { useCart } from "../../lib/store";
+import { getJWT } from "../../lib/api";
 import { Screen, Card, Eyebrow, SecondaryButton } from "../../components/ui";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -63,8 +64,13 @@ export default function CheckoutSuccess() {
   const supportEmail = theme.restaurant?.contactEmail;
   const clearCart = useCart((st) => st.clearCart);
 
+  const [isSignedIn, setIsSignedIn] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    getJWT().then((jwt) => setIsSignedIn(jwt !== null)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -113,6 +119,19 @@ export default function CheckoutSuccess() {
 
           <View style={s.momentum}>
             <Eyebrow>Keep the momentum</Eyebrow>
+            {orderId && isSignedIn ? (
+              <MomentumCard
+                icon="receipt-outline"
+                title="View or modify your order"
+                sub="Cancel or change items before the cutoff"
+                onPress={() =>
+                  router.replace({
+                    pathname: "/(app)/orders/[orderId]",
+                    params: { orderId },
+                  })
+                }
+              />
+            ) : null}
             <MomentumCard
               icon="calendar-outline"
               title="Plan the rest of the week"
@@ -130,11 +149,10 @@ export default function CheckoutSuccess() {
           {supportEmail ? (
             <Card style={s.help}>
               <Text style={[s.helpTitle, { color: theme.textPrimary }]}>
-                Need to change something?
+                Other questions?
               </Text>
               <Text style={[s.helpText, { color: theme.textSecondary }]}>
-                Reach out to {restaurantName ?? "the kitchen"} before the cutoff and they&apos;ll
-                make it right.
+                {restaurantName ?? "The kitchen"} is here for anything self-serve can&apos;t cover.
               </Text>
               <TouchableOpacity
                 onPress={() => Linking.openURL(`mailto:${supportEmail}`)}
