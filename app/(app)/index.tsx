@@ -6,20 +6,30 @@
  * cutoff, the fastest way to handle the week, and what's coming up.
  */
 
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
   SafeAreaView,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
+import {
+  getCarouselPhotos,
+  nextCarouselIndex,
+  CAROUSEL_INTERVAL_MS,
+  CAROUSEL_RESUME_DELAY_MS,
+} from "../../lib/heroCarousel";
 import { BrandMark } from "../../components/BrandMark";
 import { FoodImage } from "../../components/FoodImage";
 import {
@@ -71,6 +81,118 @@ function fmtCutoff(iso: string): string {
 function hoursUntil(iso: string): number {
   return (new Date(iso).getTime() - Date.now()) / 3_600_000;
 }
+
+// TODO: respect AccessibilityInfo.isReduceMotionEnabled — pause auto-advance when enabled.
+// No reduced-motion pattern exists in this codebase yet; treat as a follow-up.
+function NextHeroCarousel({
+  photos,
+  seed,
+  style,
+}: {
+  photos: string[];
+  seed: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const [heroWidth, setHeroWidth] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resumeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function stopTimer() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (resumeRef.current) {
+      clearTimeout(resumeRef.current);
+      resumeRef.current = null;
+    }
+  }
+
+  function startTimer() {
+    stopTimer();
+    if (photos.length <= 1 || heroWidth <= 0) return;
+    timerRef.current = setInterval(() => {
+      setActiveIdx((prev) => {
+        const next = nextCarouselIndex(prev, photos.length);
+        scrollRef.current?.scrollTo({ x: next * heroWidth, animated: true });
+        return next;
+      });
+    }, CAROUSEL_INTERVAL_MS);
+  }
+
+  useEffect(() => {
+    if (heroWidth > 0 && photos.length > 1) startTimer();
+    return stopTimer;
+  }, [heroWidth, photos.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (photos.length === 0) {
+    return <FoodImage uri={undefined} seed={seed} style={style} radius={0} />;
+  }
+
+  if (photos.length === 1) {
+    return <FoodImage uri={photos[0]} seed={seed} style={style} radius={0} />;
+  }
+
+  return (
+    <View
+      style={style}
+      onLayout={(e) => setHeroWidth(e.nativeEvent.layout.width)}
+    >
+      {heroWidth > 0 ? (
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScrollBeginDrag={stopTimer}
+          onMomentumScrollEnd={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.x / heroWidth);
+            setActiveIdx(idx);
+            resumeRef.current = setTimeout(startTimer, CAROUSEL_RESUME_DELAY_MS);
+          }}
+        >
+          {photos.map((uri, i) => (
+            <Image
+              key={i}
+              source={{ uri }}
+              style={{ width: heroWidth, height: 148 }}
+              resizeMode="cover"
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      <View style={carouselStyles.dots}>
+        {photos.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              carouselStyles.dot,
+              i === activeIdx ? carouselStyles.dotActive : carouselStyles.dotMuted,
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const carouselStyles = StyleSheet.create({
+  dots: {
+    position: "absolute",
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 5,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  dotActive: { backgroundColor: "rgba(255,255,255,0.95)" },
+  dotMuted: { backgroundColor: "rgba(255,255,255,0.45)" },
+});
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -146,6 +268,7 @@ export default function HomeScreen() {
   }
 
   const nextUrgent = nextDate ? hoursUntil(nextDate.cutoffAt) < 24 : false;
+  const heroPhotos = nextDate ? getCarouselPhotos(nextDate.menuItems) : [];
 
   return (
     <Screen>
@@ -178,12 +301,7 @@ export default function HomeScreen() {
           {/* Next up */}
           {nextDate ? (
             <Card style={[s.nextCard, nextUrgent && { borderColor: theme.accent }]}>
-              <FoodImage
-                uri={nextDate.menuItems[0]?.imageUrl}
-                seed={nextDate.id}
-                style={s.nextHero}
-                radius={0}
-              />
+              <NextHeroCarousel photos={heroPhotos} seed={nextDate.id} style={s.nextHero} />
               <View style={s.nextBody}>
                 <View style={s.nextHead}>
                   <Eyebrow>Next lunch</Eyebrow>
