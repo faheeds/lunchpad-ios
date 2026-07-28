@@ -6,7 +6,7 @@
  * dead-ending at "Back to menu".
  */
 
-import { useEffect, useRef, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../lib/theme";
 import { useCart } from "../../lib/store";
+import { getJWT } from "../../lib/api";
 import { Screen, Card, Eyebrow, SecondaryButton } from "../../components/ui";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -63,8 +64,13 @@ export default function CheckoutSuccess() {
   const supportEmail = theme.restaurant?.contactEmail;
   const clearCart = useCart((st) => st.clearCart);
 
+  const [isSignedIn, setIsSignedIn] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    getJWT().then((jwt) => setIsSignedIn(jwt !== null)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -113,7 +119,7 @@ export default function CheckoutSuccess() {
 
           <View style={s.momentum}>
             <Eyebrow>Keep the momentum</Eyebrow>
-            {orderId ? (
+            {orderId && isSignedIn ? (
               <MomentumCard
                 icon="receipt-outline"
                 title="View or modify your order"
