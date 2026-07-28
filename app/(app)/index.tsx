@@ -98,6 +98,7 @@ function NextHeroCarousel({
   const scrollRef = useRef<ScrollView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUserScrollRef = useRef(false);
 
   function stopTimer() {
     if (timerRef.current) {
@@ -147,11 +148,17 @@ function NextHeroCarousel({
           pagingEnabled
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={16}
-          onScrollBeginDrag={stopTimer}
+          onScrollBeginDrag={() => {
+            isUserScrollRef.current = true;
+            stopTimer();
+          }}
           onMomentumScrollEnd={(e) => {
             const idx = Math.round(e.nativeEvent.contentOffset.x / heroWidth);
             setActiveIdx(idx);
-            resumeRef.current = setTimeout(startTimer, CAROUSEL_RESUME_DELAY_MS);
+            if (isUserScrollRef.current) {
+              isUserScrollRef.current = false;
+              resumeRef.current = setTimeout(startTimer, CAROUSEL_RESUME_DELAY_MS);
+            }
           }}
         >
           {photos.map((uri, i) => (
