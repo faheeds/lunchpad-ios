@@ -33,6 +33,7 @@ import { useTheme } from "../../../lib/theme";
 import {
   planReorder,
   reorderMissingReasonLabel,
+  reorderSummaryMessage,
   type ReorderPlan,
 } from "../../../lib/reorder";
 import {
@@ -709,7 +710,7 @@ function ReorderModal({
                       { color: theme.textSecondary },
                     ]}
                   >
-                    None of these items are available on {formatDate(targetDate.deliveryDate)}.
+                    {reorderSummaryMessage(plan.missing, formatDate(targetDate.deliveryDate))}
                   </Text>
                 </View>
               )}
