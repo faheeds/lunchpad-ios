@@ -7,12 +7,19 @@
  * hidden route to a first-class tab.
  */
 
+import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../lib/theme";
+import { registerForPushNotifications } from "../../lib/push-notifications";
 
 export default function AppLayout() {
   const theme = useTheme();
+
+  useEffect(() => {
+    registerForPushNotifications();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{

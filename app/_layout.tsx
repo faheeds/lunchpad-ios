@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import * as Font from "expo-font";
-import { Stack } from "expo-router";
+import * as Notifications from "expo-notifications";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -9,6 +10,7 @@ import {
 import { ThemeProvider } from "../lib/theme-context";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { initSentry } from "../lib/sentry";
+import { parsePushData } from "../lib/push-notifications";
 
 // Initialize Sentry as early as possible — at module load, before React
 // mounts anything — so a crash during the first render is still captured.
@@ -26,11 +28,55 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  const router = useRouter();
+
   useEffect(() => {
     Font.loadAsync({
       Fraunces_800ExtraBold,
     });
   }, []);
+
+  useEffect(() => {
+    async function checkColdLaunchNotification(): Promise<void> {
+      const lastNotificationResponse = await Notifications.getLastNotificationResponseAsync();
+      if (lastNotificationResponse) {
+        const data = lastNotificationResponse.notification.request.content.data as Record<string, unknown>;
+        const route = parsePushData(data);
+        if (route) {
+          if (route.screen === "order") {
+            if (route.orderId) {
+              router.navigate(`/(app)/orders/${route.orderId}`);
+            } else {
+              router.navigate("/(app)/menu");
+            }
+          } else if (route.screen === "weekly") {
+            router.navigate("/(app)/weekly-plan");
+          }
+        }
+      }
+    }
+    checkColdLaunchNotification();
+  }, [router]);
+
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response: Notifications.NotificationResponse) => {
+      const data = response.notification.request.content.data as Record<string, unknown>;
+      const route = parsePushData(data);
+      if (route) {
+        if (route.screen === "order") {
+          if (route.orderId) {
+            router.navigate(`/(app)/orders/${route.orderId}`);
+          } else {
+            router.navigate("/(app)/menu");
+          }
+        } else if (route.screen === "weekly") {
+          router.navigate("/(app)/weekly-plan");
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [router]);
 
   return (
     // ErrorBoundary is the outermost element so it catches even provider
