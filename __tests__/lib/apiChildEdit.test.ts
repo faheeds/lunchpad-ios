@@ -40,6 +40,7 @@ import {
   apiPatch,
   editChild,
   deleteChild,
+  deleteWeeklyPlan,
   BASE_URL_KEY,
   JWT_KEY,
 } from "../../lib/api";
@@ -278,5 +279,20 @@ describe("path building — id interpolation", () => {
     // Slash is encoded to %2F, preventing URL path injection.
     expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child%2Fabc`);
     expect(url).toContain("%2F");
+  });
+
+  test("20c. deleteWeeklyPlan URL-encodes the planId in the path", async () => {
+    // Same pattern as editChild/deleteChild above — deleteWeeklyPlan was
+    // fixed in the same PR (Issue #31 called out this exact function by
+    // name as needing the same treatment) but had no test coverage of
+    // its own. Added here to close that gap.
+    fetchSpy.mockResolvedValue(jsonResponse(200, { ok: true }));
+
+    await deleteWeeklyPlan("plan/abc def");
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe(`${BASE_URL}/api/mobile/native/weekly-plans/plan%2Fabc%20def`);
+    expect(url).toContain("%2F");
+    expect(url).toContain("%20");
   });
 });
