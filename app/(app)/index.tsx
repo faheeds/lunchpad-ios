@@ -267,10 +267,11 @@ function UpcomingDatesEmpty({ theme }: { theme: ReturnType<typeof useTheme> }) {
           editable={!isSubmitting}
           value={email}
           onChangeText={setEmail}
+          accessibilityLabel="Email address"
           style={[s.input, { borderColor: theme.border, color: theme.textPrimary }]}
         />
         <PrimaryButton
-          label={isSubmitting ? "" : "Notify me"}
+          label="Notify me"
           onPress={handleNotifyMe}
           disabled={isSubmitting}
           loading={isSubmitting}
