@@ -263,10 +263,10 @@ export const editChild = (id: string, data: {
   studentName?: string;
   grade?: string;
   allergyNotes?: string;
-}) => apiPatch(`/api/mobile/native/account/children/${id}`, data);
+}) => apiPatch(`/api/mobile/native/account/children/${encodeURIComponent(id)}`, data);
 
 export const deleteChild = (id: string) =>
-  apiDelete<{ ok: true }>(`/api/mobile/native/account/children/${id}`);
+  apiDelete<{ ok: true }>(`/api/mobile/native/account/children/${encodeURIComponent(id)}`);
 
 // ── Weekly plan ──────────────────────────────────────────────────────────────
 
@@ -284,7 +284,7 @@ export const upsertWeeklyPlan = (data: {
 }) => apiPost<WeeklyPlan>("/api/mobile/native/weekly-plans", data);
 
 export const deleteWeeklyPlan = (planId: string) =>
-  apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${planId}`);
+  apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${encodeURIComponent(planId)}`);
 
 export const createWeeklyCheckout = () =>
   apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>(

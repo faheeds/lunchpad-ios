@@ -256,30 +256,27 @@ describe("5xx handling — reportError is called and promise rejects", () => {
 // ── Path building — FINDING territory ──────────────────────────────────────
 
 describe("path building — id interpolation", () => {
-  test("20. editChild passes id straight into the URL template (NO URL-encoding)", async () => {
-    // Document actual behavior. Callers are trusted to pass server-generated
-    // UUIDs (safe), but if an id with a space or slash ever slipped through,
-    // it would produce a syntactically invalid URL.
+  test("20. editChild URL-encodes the id in the path", async () => {
+    // editChild must URL-encode the id to prevent malformed URLs if the id
+    // contains special characters like spaces or slashes.
     fetchSpy.mockResolvedValue(jsonResponse(200, { ok: true }));
 
     await editChild("child abc", { studentName: "Alice" });
 
     const [url] = fetchSpy.mock.calls[0];
-    // Raw space slips through — NOT encoded to %20.
-    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child abc`);
-    expect(url).not.toContain("%20");
+    // Space is encoded to %20.
+    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child%20abc`);
+    expect(url).toContain("%20");
   });
 
-  test("20b. deleteChild passes id straight into the URL template (NO URL-encoding)", async () => {
+  test("20b. deleteChild URL-encodes the id in the path", async () => {
     fetchSpy.mockResolvedValue(jsonResponse(200, { ok: true }));
 
     await deleteChild("child/abc");
 
     const [url] = fetchSpy.mock.calls[0];
-    // Slash slips through — NOT encoded to %2F. A pathological id could
-    // reshape the URL entirely. In practice ids are server-generated UUIDs
-    // so this is a theoretical hazard, but worth documenting.
-    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child/abc`);
-    expect(url).not.toContain("%2F");
+    // Slash is encoded to %2F, preventing URL path injection.
+    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child%2Fabc`);
+    expect(url).toContain("%2F");
   });
 });
