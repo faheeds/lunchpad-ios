@@ -248,6 +248,34 @@ export async function searchRestaurants(
   }
 }
 
+/**
+ * Notify-me subscription for upcoming delivery dates. Hits the fixed apex
+ * domain (https://lunchpad.us/api/notify-me) — similar pattern to
+ * searchRestaurants, a cross-tenant public endpoint.
+ *
+ * Throws on network error or non-2xx response so the caller can show
+ * a user-facing error message. The endpoint is idempotent, so submitting
+ * the same restaurantId + email twice is safe.
+ */
+export async function notifyMe(restaurantId: string, email: string): Promise<void> {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) throw new Error("Email is required");
+
+  const res = await fetch(
+    "https://lunchpad.us/api/notify-me",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ restaurantId, email: trimmedEmail }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+}
+
 // ── Typed API calls ──────────────────────────────────────────────────────────
 
 import type {
