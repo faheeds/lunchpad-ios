@@ -215,6 +215,39 @@ export async function validateSchoolCode(
   }
 }
 
+/**
+ * Live search for a restaurant by name, slug, or pasted link. Unlike every
+ * other function in this file, this always hits the fixed apex domain
+ * (lunchpad.us) — there is no tenant context yet at this point in the flow,
+ * so there's no per-tenant `baseUrl` to resolve against. The endpoint
+ * itself is unauthenticated and cross-tenant by design (see
+ * docs/mobile-api-contract.md in the web repo for the full contract).
+ *
+ * Callers are responsible for debouncing — this is a plain one-shot fetch.
+ * Returns an empty array on any error (network failure, non-2xx response,
+ * bad JSON) rather than throwing, so a flaky search never blocks the
+ * existing manual code-entry path.
+ */
+export async function searchRestaurants(
+  query: string
+): Promise<RestaurantSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  try {
+    const res = await fetch(
+      `https://lunchpad.us/api/mobile/native/restaurants/search?q=${encodeURIComponent(q)}`,
+      { headers: { "Content-Type": "application/json" } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    reportError(err, { context: "searchRestaurants" });
+    return [];
+  }
+}
+
 // ── Typed API calls ──────────────────────────────────────────────────────────
 
 import type {
@@ -222,6 +255,7 @@ import type {
   Parent,
   OrderHistoryItem,
   RestaurantMenu,
+  RestaurantSearchResult,
   WeeklyPlansBundle,
   WeeklyPlan,
 } from "./types";

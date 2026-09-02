@@ -183,3 +183,12 @@ export type WeeklyPlansBundle = {
   deliveryDates: WeeklyDeliveryDate[];
   plans: WeeklyPlan[];
 };
+
+/** A single result from GET /api/mobile/native/restaurants/search on the web app. */
+export type RestaurantSearchResult = {
+  id: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
+};
