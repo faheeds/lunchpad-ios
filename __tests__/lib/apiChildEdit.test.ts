@@ -9,9 +9,9 @@
  *   - 401 → NOT reported (expected auth path)
  *   - 5xx → REPORTED
  *
- * Note on path building: editChild/deleteChild inject `id` into the URL
- * via template string, unencoded. We include a test that documents this
- * behavior — if it ever changes to URL-encode, the test surfaces it.
+ * Note on path building: editChild/deleteChild URL-encode the `id` to
+ * safely inject it into the path. Tests verify that spaces encode to %20
+ * and slashes to %2F, preventing URL injection or malformed paths.
  */
 
 // ── Mocks: must be declared before the SUT import ─────────────────────────
@@ -40,6 +40,7 @@ import {
   apiPatch,
   editChild,
   deleteChild,
+  deleteWeeklyPlan,
   BASE_URL_KEY,
   JWT_KEY,
 } from "../../lib/api";
@@ -256,30 +257,42 @@ describe("5xx handling — reportError is called and promise rejects", () => {
 // ── Path building — FINDING territory ──────────────────────────────────────
 
 describe("path building — id interpolation", () => {
-  test("20. editChild passes id straight into the URL template (NO URL-encoding)", async () => {
-    // Document actual behavior. Callers are trusted to pass server-generated
-    // UUIDs (safe), but if an id with a space or slash ever slipped through,
-    // it would produce a syntactically invalid URL.
+  test("20. editChild URL-encodes the id in the path", async () => {
+    // editChild must URL-encode the id to prevent malformed URLs if the id
+    // contains special characters like spaces or slashes.
     fetchSpy.mockResolvedValue(jsonResponse(200, { ok: true }));
 
     await editChild("child abc", { studentName: "Alice" });
 
     const [url] = fetchSpy.mock.calls[0];
-    // Raw space slips through — NOT encoded to %20.
-    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child abc`);
-    expect(url).not.toContain("%20");
+    // Space is encoded to %20.
+    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child%20abc`);
+    expect(url).toContain("%20");
   });
 
-  test("20b. deleteChild passes id straight into the URL template (NO URL-encoding)", async () => {
+  test("20b. deleteChild URL-encodes the id in the path", async () => {
     fetchSpy.mockResolvedValue(jsonResponse(200, { ok: true }));
 
     await deleteChild("child/abc");
 
     const [url] = fetchSpy.mock.calls[0];
-    // Slash slips through — NOT encoded to %2F. A pathological id could
-    // reshape the URL entirely. In practice ids are server-generated UUIDs
-    // so this is a theoretical hazard, but worth documenting.
-    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child/abc`);
-    expect(url).not.toContain("%2F");
+    // Slash is encoded to %2F, preventing URL path injection.
+    expect(url).toBe(`${BASE_URL}/api/mobile/native/account/children/child%2Fabc`);
+    expect(url).toContain("%2F");
+  });
+
+  test("20c. deleteWeeklyPlan URL-encodes the planId in the path", async () => {
+    // Same pattern as editChild/deleteChild above — deleteWeeklyPlan was
+    // fixed in the same PR (Issue #31 called out this exact function by
+    // name as needing the same treatment) but had no test coverage of
+    // its own. Added here to close that gap.
+    fetchSpy.mockResolvedValue(jsonResponse(200, { ok: true }));
+
+    await deleteWeeklyPlan("plan/abc def");
+
+    const [url] = fetchSpy.mock.calls[0];
+    expect(url).toBe(`${BASE_URL}/api/mobile/native/weekly-plans/plan%2Fabc%20def`);
+    expect(url).toContain("%2F");
+    expect(url).toContain("%20");
   });
 });
