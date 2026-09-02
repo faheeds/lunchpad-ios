@@ -9,9 +9,9 @@
  *   - 401 → NOT reported (expected auth path)
  *   - 5xx → REPORTED
  *
- * Note on path building: editChild/deleteChild inject `id` into the URL
- * via template string, unencoded. We include a test that documents this
- * behavior — if it ever changes to URL-encode, the test surfaces it.
+ * Note on path building: editChild/deleteChild URL-encode the `id` to
+ * safely inject it into the path. Tests verify that spaces encode to %20
+ * and slashes to %2F, preventing URL injection or malformed paths.
  */
 
 // ── Mocks: must be declared before the SUT import ─────────────────────────
