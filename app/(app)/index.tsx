@@ -16,13 +16,14 @@ import {
   StyleSheet,
   RefreshControl,
   SafeAreaView,
+  TextInput,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders } from "../../lib/api";
+import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders, notifyMe } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
 import {
   getCarouselPhotos,
@@ -200,6 +201,110 @@ const carouselStyles = StyleSheet.create({
   dotActive: { backgroundColor: "rgba(255,255,255,0.95)" },
   dotMuted: { backgroundColor: "rgba(255,255,255,0.45)" },
 });
+
+function UpcomingDatesEmpty({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const restaurantId = theme.restaurant?.id;
+
+  async function handleNotifyMe() {
+    if (!restaurantId) {
+      setError("Restaurant information not available");
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Please enter a valid email");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await notifyMe(restaurantId, email);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to subscribe");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const s = emptyStateStyles(theme);
+
+  if (submitted) {
+    return (
+      <Card style={s.card}>
+        <View style={s.successIcon}>
+          <Ionicons name="checkmark-circle" size={40} color={theme.success} />
+        </View>
+        <Text style={[s.successTitle, { color: theme.textPrimary }]}>
+          We'll email you when new dates are added
+        </Text>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={s.card}>
+      <Ionicons name="calendar-outline" size={30} color={theme.textMuted} />
+      <Text style={[s.title, { color: theme.textPrimary }]}>No dates open yet</Text>
+      <Text style={[s.subtitle, { color: theme.textMuted }]}>
+        New delivery dates are added regularly
+      </Text>
+
+      <View style={s.inputRow}>
+        <TextInput
+          placeholder="your@email.com"
+          placeholderTextColor={theme.textMuted}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          editable={!isSubmitting}
+          value={email}
+          onChangeText={setEmail}
+          style={[s.input, { borderColor: theme.border, color: theme.textPrimary }]}
+        />
+        <PrimaryButton
+          label={isSubmitting ? "" : "Notify me"}
+          onPress={handleNotifyMe}
+          disabled={isSubmitting}
+          loading={isSubmitting}
+          style={s.button}
+        />
+      </View>
+
+      {error ? (
+        <Text style={[s.error, { color: theme.danger }]}>
+          {error}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+const emptyStateStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    card: { padding: 18, alignItems: "center", gap: 8 },
+    title: { fontSize: 15, fontWeight: "700", marginTop: 4 },
+    subtitle: { fontSize: 13, textAlign: "center", lineHeight: 18 },
+    inputRow: { width: "100%", gap: 8, marginTop: 6 },
+    input: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      fontSize: 14,
+    },
+    button: { paddingVertical: 12, paddingHorizontal: 16 },
+    error: { fontSize: 12, textAlign: "center", marginTop: 4 },
+    successIcon: { alignItems: "center", marginBottom: 4 },
+    successTitle: { fontSize: 15, fontWeight: "700", textAlign: "center", lineHeight: 20 },
+  });
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -416,13 +521,7 @@ export default function HomeScreen() {
           {/* Upcoming dates */}
           <SectionTitle>Upcoming dates</SectionTitle>
           {dates.length === 0 ? (
-            <Card style={{ padding: 22, alignItems: "center", gap: 6 }}>
-              <Ionicons name="calendar-outline" size={30} color={theme.textMuted} />
-              <Text style={[s.emptyTitle, { color: theme.textPrimary }]}>No dates open yet</Text>
-              <Text style={[s.emptyMsg, { color: theme.textMuted }]}>
-                New delivery dates are added regularly — check back soon.
-              </Text>
-            </Card>
+            <UpcomingDatesEmpty theme={theme} />
           ) : (
             dates.map((d) => (
               <TouchableOpacity
