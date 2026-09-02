@@ -58,7 +58,7 @@ export default function RootLayout() {
       }
     }
     checkColdLaunchNotification();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(async (response: Notifications.NotificationResponse) => {
@@ -79,7 +79,7 @@ export default function RootLayout() {
     });
 
     return () => subscription.remove();
-  }, [router]);
+  }, []);
 
   return (
     // ErrorBoundary is the outermost element so it catches even provider

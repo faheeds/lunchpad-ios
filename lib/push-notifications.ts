@@ -6,9 +6,8 @@ import { reportError } from "./sentry";
 /**
  * Register for push notifications. Requests permission, gets the Expo push
  * token, and registers it with the backend. Does not show errors to the user
- * (fail-silent policy) but reports failures to Sentry.
- *
- * Subsequent calls will no-op if a token was already registered this session.
+ * (fail-silent policy) but reports failures to Sentry. The caller is
+ * responsible for only calling this once per session.
  */
 export async function registerForPushNotifications(): Promise<void> {
   try {
