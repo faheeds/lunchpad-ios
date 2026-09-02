@@ -11,6 +11,7 @@ import { ThemeProvider } from "../lib/theme-context";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { initSentry } from "../lib/sentry";
 import { parsePushData } from "../lib/push-notifications";
+import { isSignedIn } from "../lib/auth";
 
 // Initialize Sentry as early as possible — at module load, before React
 // mounts anything — so a crash during the first render is still captured.
@@ -38,6 +39,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     async function checkColdLaunchNotification(): Promise<void> {
+      if (!(await isSignedIn())) return;
       const lastNotificationResponse = await Notifications.getLastNotificationResponseAsync();
       if (lastNotificationResponse) {
         const data = lastNotificationResponse.notification.request.content.data as Record<string, unknown>;
@@ -59,7 +61,8 @@ export default function RootLayout() {
   }, [router]);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response: Notifications.NotificationResponse) => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(async (response: Notifications.NotificationResponse) => {
+      if (!(await isSignedIn())) return;
       const data = response.notification.request.content.data as Record<string, unknown>;
       const route = parsePushData(data);
       if (route) {

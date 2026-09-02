@@ -50,21 +50,7 @@ export async function registerForPushNotifications(): Promise<void> {
  */
 export async function unregisterPushNotifications(): Promise<void> {
   try {
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    if (!projectId) {
-      return;
-    }
-
-    const token = await Notifications.getExpoPushTokenAsync({ projectId });
-    if (!token.data) {
-      return;
-    }
-
-    try {
-      await apiDelete<{ ok: true }>(`/api/mobile/native/push-token`);
-    } catch {
-      return;
-    }
+    await apiDelete<{ ok: true }>(`/api/mobile/native/push-token`);
   } catch (err) {
     reportError(err, {
       context: "unregisterPushNotifications",
