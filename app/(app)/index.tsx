@@ -33,6 +33,7 @@ import {
 } from "../../lib/heroCarousel";
 import { BrandMark } from "../../components/BrandMark";
 import { FoodImage } from "../../components/FoodImage";
+import { HeroImageCard } from "../../components/HeroImageCard";
 import {
   Screen,
   Card,
@@ -410,6 +411,13 @@ export default function HomeScreen() {
             </View>
             <BrandMark size={36} radius={10} />
           </View>
+
+          {/* Hero image */}
+          {theme.heroImageUrl ? (
+            <HeroImageCard heroImageUrl={theme.heroImageUrl} />
+          ) : (
+            <HeroImageCard primaryColor={theme.primary} darkColor={theme.dark} />
+          )}
 
           {/* Next up */}
           {nextDate ? (

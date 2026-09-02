@@ -244,7 +244,7 @@ export default function ConnectScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 28, paddingBottom: 16, gap: 14 },
+  content: { flex: 1, paddingHorizontal: 24, paddingVertical: 16, gap: 14, justifyContent: "center" },
   title: { fontSize: 27, fontWeight: "600", letterSpacing: -0.5, lineHeight: 32, marginTop: 8 },
   sub: { fontSize: 15, lineHeight: 22 },
   field: { gap: 8, marginTop: 8 },
