@@ -9,6 +9,7 @@ import {
   SCHOOL_CODE_KEY,
 } from "./api";
 import { clearThemeCache } from "./theme-context";
+import { unregisterPushNotifications } from "./push-notifications";
 
 export async function isSignedIn(): Promise<boolean> {
   const token = await getJWT();
@@ -24,8 +25,13 @@ export async function isSignedIn(): Promise<boolean> {
  *
  * Also wipes the cached brand so the next sign-in flow doesn't briefly
  * flash the previous tenant's colors before the new theme loads.
+ *
+ * Unregisters push notifications before clearing the JWT, since the DELETE
+ * call needs a valid authenticated session. Failures are reported to Sentry
+ * but do not block sign-out.
  */
 export async function signOut(): Promise<void> {
+  await unregisterPushNotifications();
   await clearJWT();
   await clearStoredBaseUrl();
   await SecureStore.deleteItemAsync(SCHOOL_CODE_KEY);

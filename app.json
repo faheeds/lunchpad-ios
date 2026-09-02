@@ -32,6 +32,7 @@
       ],
       "expo-asset",
       "expo-font",
+      "expo-notifications",
       "expo-web-browser",
       "@sentry/react-native/expo"
     ],
