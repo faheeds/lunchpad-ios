@@ -14,7 +14,7 @@ import type { CartItem } from "../../lib/types";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-type AddInput = Omit<CartItem, "cartKey" | "quantity">;
+type AddInput = Omit<CartItem, "cartKey" | "quantity" | "deliveryDateId" | "schoolId">;
 
 function makeItem(overrides: Partial<AddInput> = {}): AddInput {
   return {
@@ -111,13 +111,13 @@ describe("useCart.total() and count() — adversarial", () => {
     expect(useCart.getState().count()).toBe(0);
   });
 
-  test("removeItem on the only line clears delivery context and zeroes totals", () => {
+  test("removeItem on the only line zeroes totals and clears schoolIds", () => {
     useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
     const key = useCart.getState().items[0].cartKey;
     useCart.getState().removeItem(key);
     expect(useCart.getState().total()).toBe(0);
     expect(useCart.getState().count()).toBe(0);
-    expect(useCart.getState().deliveryDateId).toBeNull();
+    expect(useCart.getState().schoolIds()).toEqual([]);
   });
 
   test("large but safe cart values stay within Number.MAX_SAFE_INTEGER", () => {
@@ -196,9 +196,12 @@ describe("useCart.total() and count() — adversarial", () => {
     expect(zombies).toHaveLength(0);
   });
 
-  test("switching delivery dates wipes prior lines — totals reflect only the new date", () => {
+  test("adding from a different delivery date no longer wipes the cart — items from both dates coexist", () => {
+    // This behavior changed deliberately: cart items now carry their own
+    // deliveryDateId/schoolId, so a cart can hold items for children at
+    // different schools at once. What used to wipe the cart on a date
+    // switch now just adds a second line alongside the first.
     useCart.getState().addItem(makeItem({ lineTotalCents: 999 }), "dd-1", "sch-1");
-    // Different delivery date → cart resets, keeps only the new item.
     useCart
       .getState()
       .addItem(
@@ -206,9 +209,30 @@ describe("useCart.total() and count() — adversarial", () => {
         "dd-2",
         "sch-2",
       );
-    expect(useCart.getState().items).toHaveLength(1);
-    expect(useCart.getState().total()).toBe(250);
-    expect(useCart.getState().count()).toBe(1);
+    expect(useCart.getState().items).toHaveLength(2);
+    expect(useCart.getState().total()).toBe(999 + 250);
+    expect(useCart.getState().count()).toBe(2);
+  });
+
+  test("the exact same item added from two different delivery dates stays two separate lines, not merged", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-2", "sch-2");
+    expect(useCart.getState().items).toHaveLength(2);
+    expect(useCart.getState().count()).toBe(2);
+    expect(useCart.getState().items[0].schoolId).toBe("sch-1");
+    expect(useCart.getState().items[1].schoolId).toBe("sch-2");
+  });
+
+  test("schoolIds() returns every distinct school represented in the cart", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-redmond");
+    useCart.getState().addItem(makeItem({ menuItemId: "other", lineTotalCents: 300 }), "dd-2", "sch-bellevue");
+    expect(useCart.getState().schoolIds().sort()).toEqual(["sch-bellevue", "sch-redmond"]);
+  });
+
+  test("schoolIds() returns a single entry for a single-school cart, empty array for an empty cart", () => {
+    expect(useCart.getState().schoolIds()).toEqual([]);
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    expect(useCart.getState().schoolIds()).toEqual(["sch-1"]);
   });
 });
 

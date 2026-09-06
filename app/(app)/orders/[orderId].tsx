@@ -90,8 +90,6 @@ export default function OrderDetail() {
   const deliveryDate = deliveryDates?.find((d) => d.deliveryDate === order?.deliveryDate);
 
   const cartItems = useCart((st) => st.items);
-  const cartDeliveryDateId = useCart((st) => st.deliveryDateId);
-  const clearCart = useCart((st) => st.clearCart);
   const addItem = useCart((st) => st.addItem);
 
   const canReorder = !!order && order.items.length > 0;
@@ -130,13 +128,10 @@ export default function OrderDetail() {
       setReorderOpen(false);
       return;
     }
-    // Wipe the cart if it belonged to a different delivery date. The
-    // store would do this on its own on the first addItem, but doing it
-    // explicitly here keeps the code symmetric with the confirm dialog
-    // above and avoids leaking any transient state.
-    if (cartDeliveryDateId && cartDeliveryDateId !== targetDate.id) {
-      clearCart();
-    }
+    // Reordering no longer wipes the cart before adding — cart items now
+    // carry their own deliveryDateId/schoolId, so reordered items simply
+    // add alongside whatever's already in the cart, same as adding from
+    // the menu screen does.
     for (const line of plan.cloneable) {
       addItem(
         {

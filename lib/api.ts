@@ -377,9 +377,9 @@ export const createOrder = (data: {
  * docs/mobile-api-contract.md in the web repo for the full contract.
  */
 export const createCartCheckout = (data: {
-  deliveryDateId: string;
   items: {
     parentChildId: string;
+    deliveryDateId: string;
     menuItemId: string;
     choice?: string;
     size?: string;

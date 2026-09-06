@@ -103,22 +103,35 @@ export type CartItem = {
    *  accounts). Only meaningful once assigned — see cart.tsx's
    *  assignItemToChild usage for how this gets set. */
   parentChildId?: string;
+  /** Which delivery date (and therefore which school) this line was
+   *  added from. Required, not optional — every line always belongs to
+   *  a specific date/school, even in a single-school cart. This is what
+   *  lets a cart hold items from more than one school at once: each
+   *  line carries its own date instead of the whole cart sharing one. */
+  deliveryDateId: string;
+  schoolId: string;
 };
 
 /** Build a deterministic key from a cart-item configuration. Same options
  *  in a different order still hash to the same key so we don't end up
  *  with sibling lines that should be one. Includes both `size` and
- *  `choice` so Beef-Medium and Beef-Large are separate cart lines. */
+ *  `choice` so Beef-Medium and Beef-Large are separate cart lines.
+ *  Includes deliveryDateId so the exact same item added from two
+ *  different schools' menus stays two separate lines rather than merging
+ *  into one — without this, ordering the same menu item for a Bellevue
+ *  child and a Redmond child on the same day would collide into a single
+ *  cart line with the wrong combined quantity and only one school. */
 export function buildCartKey(
   menuItemId: string,
   size: string | undefined,
   choice: string | undefined,
   additions: string[],
   removals: string[],
+  deliveryDateId: string,
 ): string {
   const a = [...additions].sort().join("|");
   const r = [...removals].sort().join("|");
-  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}`;
+  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}::${deliveryDateId}`;
 }
 
 export type Child = {
