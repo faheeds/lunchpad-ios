@@ -33,7 +33,6 @@ import {
 } from "../../lib/heroCarousel";
 import { BrandMark } from "../../components/BrandMark";
 import { FoodImage } from "../../components/FoodImage";
-import { HeroImageCard } from "../../components/HeroImageCard";
 import {
   Screen,
   Card,
@@ -167,7 +166,7 @@ function NextHeroCarousel({
             <Image
               key={i}
               source={{ uri }}
-              style={{ width: heroWidth, height: 148 }}
+              style={{ width: heroWidth, height: 240 }}
               resizeMode="cover"
             />
           ))}
@@ -412,13 +411,6 @@ export default function HomeScreen() {
             <BrandMark size={36} radius={10} />
           </View>
 
-          {/* Hero image */}
-          {theme.heroImageUrl ? (
-            <HeroImageCard heroImageUrl={theme.heroImageUrl} />
-          ) : (
-            <HeroImageCard primaryColor={theme.primary} darkColor={theme.dark} />
-          )}
-
           {/* Next up */}
           {nextDate ? (
             <Card style={[s.nextCard, nextUrgent && { borderColor: theme.accent }]}>
@@ -577,7 +569,7 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     greetBig: { fontSize: 26, fontWeight: "600", letterSpacing: -0.5, marginTop: 1 },
 
     nextCard: { overflow: "hidden" },
-    nextHero: { width: "100%", height: 148 },
+    nextHero: { width: "100%", height: 240 },
     nextBody: { padding: 16 },
     nextHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     nextTitle: { fontSize: 20, fontWeight: "600", letterSpacing: -0.3, marginTop: 8 },
