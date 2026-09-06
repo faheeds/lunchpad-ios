@@ -10,72 +10,78 @@
  * The impl (see lib/types.ts) is:
  *   const a = [...additions].sort().join("|");
  *   const r = [...removals].sort().join("|");
- *   return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}`;
+ *   return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}::${deliveryDateId}`;
  *
  * So: additions/removals are order-independent (sorted before join), but
- * NOT de-duplicated. undefined and null both collapse to "".
+ * NOT de-duplicated. undefined and null both collapse to "". Every test
+ * below passes the same fixed deliveryDateId ("date-1") unless it's
+ * specifically testing that a different one changes the key — this
+ * preserves every original test's "same/different" semantics exactly,
+ * since deliveryDateId is a genuinely new dimension added later (to
+ * support the same menu item being ordered from more than one school's
+ * menu without colliding into a single cart line).
  */
 
 import { buildCartKey } from "../../lib/types";
 
 describe("buildCartKey — happy path (merge cases)", () => {
   test("identical item + size + choice + additions + removals produces identical keys", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Cheese"], ["Onions"]);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Cheese"], ["Onions"]);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Cheese"], ["Onions"], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Cheese"], ["Onions"], "date-1");
     expect(k1).toBe(k2);
   });
 
   test("no size, no choice, no additions, no removals — deterministic key", () => {
-    const k1 = buildCartKey("item-1", undefined, undefined, [], []);
-    const k2 = buildCartKey("item-1", undefined, undefined, [], []);
+    const k1 = buildCartKey("item-1", undefined, undefined, [], [], "date-1");
+    const k2 = buildCartKey("item-1", undefined, undefined, [], [], "date-1");
     expect(k1).toBe(k2);
   });
 });
 
 describe("buildCartKey — happy path (separation cases)", () => {
   test("different menuItemIds produce different keys", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", [], []);
-    const k2 = buildCartKey("item-2", "Medium", "Beef", [], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", [], [], "date-1");
+    const k2 = buildCartKey("item-2", "Medium", "Beef", [], [], "date-1");
     expect(k1).not.toBe(k2);
   });
 
   test("different sizes on same item produce different keys", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", [], []);
-    const k2 = buildCartKey("item-1", "Large", "Beef", [], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", [], [], "date-1");
+    const k2 = buildCartKey("item-1", "Large", "Beef", [], [], "date-1");
     expect(k1).not.toBe(k2);
   });
 
   test("different choices on same item produce different keys", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", [], []);
-    const k2 = buildCartKey("item-1", "Medium", "Chicken", [], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", [], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Chicken", [], [], "date-1");
     expect(k1).not.toBe(k2);
   });
 
   test("different addition SETS produce different keys", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], []);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Cheese"], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Cheese"], [], "date-1");
     expect(k1).not.toBe(k2);
   });
 
   test("different removal SETS produce different keys", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", [], ["Onions"]);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", [], ["Pickles"]);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", [], ["Onions"], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", [], ["Pickles"], "date-1");
     expect(k1).not.toBe(k2);
   });
 });
 
 describe("buildCartKey — adversarial", () => {
   test("additions in different ORDER but same SET produce the same key (order-independent)", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Cheese", "Avocado"], []);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Avocado", "Bacon", "Cheese"], []);
-    const k3 = buildCartKey("item-1", "Medium", "Beef", ["Cheese", "Avocado", "Bacon"], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Cheese", "Avocado"], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Avocado", "Bacon", "Cheese"], [], "date-1");
+    const k3 = buildCartKey("item-1", "Medium", "Beef", ["Cheese", "Avocado", "Bacon"], [], "date-1");
     expect(k1).toBe(k2);
     expect(k2).toBe(k3);
   });
 
   test("removals in different ORDER but same SET produce the same key", () => {
-    const k1 = buildCartKey("item-1", "Medium", "Beef", [], ["Onions", "Pickles"]);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", [], ["Pickles", "Onions"]);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", [], ["Onions", "Pickles"], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", [], ["Pickles", "Onions"], "date-1");
     expect(k1).toBe(k2);
   });
 
@@ -86,24 +92,24 @@ describe("buildCartKey — adversarial", () => {
     // undefined. Not obviously a bug — the CartItem type has size as
     // `string | undefined` (no null in the signature), so an empty string
     // shouldn't occur in practice, but this coalescence is worth flagging.
-    const k1 = buildCartKey("item-1", undefined, undefined, [], []);
-    const k2 = buildCartKey("item-1", "", undefined, [], []);
+    const k1 = buildCartKey("item-1", undefined, undefined, [], [], "date-1");
+    const k2 = buildCartKey("item-1", "", undefined, [], [], "date-1");
     expect(k1).toBe(k2);
   });
 
   test("undefined choice and empty-string choice collapse to the SAME key (same FINDING)", () => {
-    const k1 = buildCartKey("item-1", "Medium", undefined, [], []);
-    const k2 = buildCartKey("item-1", "Medium", "", [], []);
+    const k1 = buildCartKey("item-1", "Medium", undefined, [], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "", [], [], "date-1");
     expect(k1).toBe(k2);
   });
 
   test("empty additions array and (empty additions) both produce empty middle segment", () => {
     // Sanity check that "no additions" always resolves identically.
-    const k1 = buildCartKey("item-1", "Medium", "Beef", [], []);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", [], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", [], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", [], [], "date-1");
     expect(k1).toBe(k2);
     // And the key contains the expected empty segment between the last two "::".
-    expect(k1).toBe("item-1::Medium::Beef::::");
+    expect(k1).toBe("item-1::Medium::Beef::::::date-1");
   });
 
   test("duplicates in additions are NOT de-duped by buildCartKey (FINDING)", () => {
@@ -112,8 +118,8 @@ describe("buildCartKey — adversarial", () => {
     // cart lines. pricing.ts uses a Set and dedupes, but the store keys off
     // this string — so a caller who accidentally passes duplicate addition
     // names would get non-merging lines. Documented, not fixed.
-    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], []);
-    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Bacon"], []);
+    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Bacon", "Bacon"], [], "date-1");
     expect(k1).not.toBe(k2);
   });
 
@@ -124,7 +130,7 @@ describe("buildCartKey — adversarial", () => {
     const removals = ["Pickles", "Onions"];
     const additionsSnapshot = [...additions];
     const removalsSnapshot = [...removals];
-    buildCartKey("item-1", "Medium", "Beef", additions, removals);
+    buildCartKey("item-1", "Medium", "Beef", additions, removals, "date-1");
     expect(additions).toEqual(additionsSnapshot);
     expect(removals).toEqual(removalsSnapshot);
   });
@@ -136,8 +142,8 @@ describe("buildCartKey — adversarial", () => {
     // depends on lexicographic ordering — a single addition "A|B" sorts to
     // "A|B" and a two-addition list ["A", "B"] sorts to ["A", "B"] then
     // joins to "A|B". Those collide exactly. Demonstrating with A and B:
-    const kOne = buildCartKey("item-1", undefined, undefined, ["A|B"], []);
-    const kTwo = buildCartKey("item-1", undefined, undefined, ["A", "B"], []);
+    const kOne = buildCartKey("item-1", undefined, undefined, ["A|B"], [], "date-1");
+    const kTwo = buildCartKey("item-1", undefined, undefined, ["A", "B"], [], "date-1");
     expect(kOne).toBe(kTwo);
     // Not currently exploitable — operators don't create option names with
     // "|" — but worth flagging as a fragile assumption.
@@ -149,11 +155,30 @@ describe("buildCartKey — adversarial", () => {
     // configurations map to the same key. In practice all IDs are cuids
     // and size names are short strings, but this is another fragile
     // assumption.
-    const k1 = buildCartKey("item-1::Medium", undefined, undefined, [], []);
-    const k2 = buildCartKey("item-1", "Medium", undefined, [], []);
+    const k1 = buildCartKey("item-1::Medium", undefined, undefined, [], [], "date-1");
+    const k2 = buildCartKey("item-1", "Medium", undefined, [], [], "date-1");
     // Whether these collide depends on how many "::" segments align.
     // Currently they don't (choice/additions/removals differ in position),
     // but the test just documents the current outcome for future readers.
     expect(k1).not.toBe(k2);
+  });
+});
+
+describe("buildCartKey — deliveryDateId (multi-school cart support)", () => {
+  test("the exact same item/customization from two different delivery dates produces different keys", () => {
+    // This is what lets the same menu item ordered from a Bellevue
+    // child's delivery date and a Redmond child's delivery date stay as
+    // two separate cart lines instead of colliding into one with a
+    // combined quantity and only one (wrong, for the other child)
+    // school.
+    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], [], "date-bellevue");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], [], "date-redmond");
+    expect(k1).not.toBe(k2);
+  });
+
+  test("the same item/customization from the same delivery date still merges (unaffected by adding this dimension)", () => {
+    const k1 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], [], "date-redmond");
+    const k2 = buildCartKey("item-1", "Medium", "Beef", ["Bacon"], [], "date-redmond");
+    expect(k1).toBe(k2);
   });
 });

@@ -3,13 +3,14 @@ import { buildCartKey, type CartItem } from "./types";
 
 /** Input for adding an item — caller doesn't have to compute cartKey or
  *  set quantity; the store derives the key and starts qty at 1 (or
- *  increments if a matching line already exists). */
-type AddItemInput = Omit<CartItem, "cartKey" | "quantity">;
+ *  increments if a matching line already exists). deliveryDateId and
+ *  schoolId are passed as separate arguments to addItem (see below), not
+ *  part of this input type, since every existing call site already
+ *  passes them that way. */
+type AddItemInput = Omit<CartItem, "cartKey" | "quantity" | "deliveryDateId" | "schoolId">;
 
 type CartStore = {
   items: CartItem[];
-  deliveryDateId: string | null;
-  schoolId: string | null;
   addItem: (item: AddItemInput, deliveryDateId: string, schoolId: string) => void;
   /** +1 to the quantity on an existing line. */
   incrementItem: (cartKey: string) => void;
@@ -26,37 +27,42 @@ type CartStore = {
   total: () => number;
   /** Total number of units (sum of quantities), not number of lines. */
   count: () => number;
+  /** Distinct schoolIds represented across all cart lines. Empty for an
+   *  empty cart. Cart screens use this to decide whether to show
+   *  per-school grouping (2+ schools) or the simpler single-school
+   *  layout (0 or 1). */
+  schoolIds: () => string[];
 };
 
 export const useCart = create<CartStore>((set, get) => ({
   items: [],
-  deliveryDateId: null,
-  schoolId: null,
 
   addItem: (input, deliveryDateId, schoolId) =>
     set((state) => {
-      const cartKey = buildCartKey(input.menuItemId, input.size, input.choice, input.additions, input.removals);
-      // Switching delivery dates wipes the cart — different menus / different
-      // kitchens. Start a fresh single-item cart on the new date.
-      if (state.deliveryDateId && state.deliveryDateId !== deliveryDateId) {
-        return {
-          items: [{ ...input, cartKey, quantity: 1 }],
-          deliveryDateId,
-          schoolId,
-        };
-      }
+      const cartKey = buildCartKey(
+        input.menuItemId,
+        input.size,
+        input.choice,
+        input.additions,
+        input.removals,
+        deliveryDateId,
+      );
+      // Adding from a different school's menu no longer wipes the cart —
+      // each line carries its own deliveryDateId/schoolId, so a cart can
+      // genuinely hold items for children at more than one school at
+      // once. buildCartKey already includes deliveryDateId, so the exact
+      // same menu item added from two different schools naturally stays
+      // two separate lines rather than colliding into one.
       const existing = state.items.findIndex((i) => i.cartKey === cartKey);
       if (existing >= 0) {
-        // Same item + same customizations → bump quantity instead of
-        // adding a duplicate row.
+        // Same item + same customizations + same delivery date → bump
+        // quantity instead of adding a duplicate row.
         const items = [...state.items];
         items[existing] = { ...items[existing], quantity: items[existing].quantity + 1 };
-        return { items, deliveryDateId, schoolId };
+        return { items };
       }
       return {
-        items: [...state.items, { ...input, cartKey, quantity: 1 }],
-        deliveryDateId,
-        schoolId,
+        items: [...state.items, { ...input, cartKey, deliveryDateId, schoolId, quantity: 1 }],
       };
     }),
 
@@ -80,22 +86,11 @@ export const useCart = create<CartStore>((set, get) => ({
         }
         // else: drop the line entirely
       }
-      // If the cart is now empty, also clear delivery context so a fresh
-      // cart can start on any date.
-      if (items.length === 0) {
-        return { items, deliveryDateId: null, schoolId: null };
-      }
       return { items };
     }),
 
   removeItem: (cartKey) =>
-    set((state) => {
-      const items = state.items.filter((i) => i.cartKey !== cartKey);
-      if (items.length === 0) {
-        return { items, deliveryDateId: null, schoolId: null };
-      }
-      return { items };
-    }),
+    set((state) => ({ items: state.items.filter((i) => i.cartKey !== cartKey) })),
 
   assignItemToChild: (cartKey, parentChildId) =>
     set((state) => ({
@@ -104,12 +99,14 @@ export const useCart = create<CartStore>((set, get) => ({
       ),
     })),
 
-  clearCart: () => set({ items: [], deliveryDateId: null, schoolId: null }),
+  clearCart: () => set({ items: [] }),
 
   total: () =>
     get().items.reduce((sum, item) => sum + item.lineTotalCents * item.quantity, 0),
 
   count: () => get().items.reduce((sum, item) => sum + item.quantity, 0),
+
+  schoolIds: () => [...new Set(get().items.map((i) => i.schoolId))],
 }));
 
 // Format cents as $X.XX

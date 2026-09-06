@@ -45,8 +45,7 @@ export default function CartScreen() {
   const s = styles(theme);
 
   const items = useCart((st) => st.items);
-  const deliveryDateId = useCart((st) => st.deliveryDateId);
-  const schoolId = useCart((st) => st.schoolId);
+  const schoolIds = useCart((st) => st.schoolIds());
   const incrementItem = useCart((st) => st.incrementItem);
   const decrementItem = useCart((st) => st.decrementItem);
   const assignItemToChild = useCart((st) => st.assignItemToChild);
@@ -56,7 +55,18 @@ export default function CartScreen() {
   const { data: account } = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
   const { data: dates } = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
 
-  const deliveryDate = dates?.find((d) => d.id === deliveryDateId);
+  // Cart items each carry their own deliveryDateId now (to support items
+  // for children at different schools in one cart) — look up each
+  // item's own delivery date rather than assuming one shared date for
+  // the whole screen.
+  const deliveryDateById = new Map((dates ?? []).map((d) => [d.id, d]));
+  const isMultiSchool = schoolIds.length > 1;
+  // For the single-school case (the common one), these describe the
+  // one delivery date the whole cart shares. For a multi-school cart
+  // they describe only the FIRST item's date — only used as a fallback
+  // for guest-checkout fields below, which don't make sense to ask
+  // per-item.
+  const deliveryDate = items[0] ? deliveryDateById.get(items[0].deliveryDateId) : undefined;
   const isOffice = deliveryDate?.school.locationType === "OFFICE";
   const children = account?.children ?? [];
 
@@ -101,7 +111,7 @@ export default function CartScreen() {
   const gradeOk = isOffice || effectiveGrade.trim().length >= 1;
 
   async function handleCheckout() {
-    if (!deliveryDateId || !schoolId || items.length === 0) return;
+    if (items.length === 0) return;
     if (!studentOk) {
       Alert.alert("Eater needed", "Enter the eater's name (at least 2 characters).");
       return;
@@ -129,17 +139,20 @@ export default function CartScreen() {
       // accounts working exactly as before, with zero picker shown.
       const effectiveChildIdFor = (i: (typeof items)[number]) => i.parentChildId ?? selectedChildId;
       const distinctChildIds = new Set(items.map(effectiveChildIdFor).filter(Boolean));
-      const isMultiChild = distinctChildIds.size > 1;
+      // Multiple distinct children OR multiple distinct schools both
+      // require the batch endpoint — a single-order checkout can only
+      // ever represent one child at one school.
+      const needsBatch = distinctChildIds.size > 1 || schoolIds.length > 1;
 
       let checkoutUrl: string;
-      if (isMultiChild) {
+      if (needsBatch) {
         const result = await createCartCheckout({
-          deliveryDateId,
           items: items.flatMap((i) => {
             const parentChildId = effectiveChildIdFor(i);
-            if (!parentChildId) return []; // shouldn't happen once isMultiChild is true, but never submit an unassigned line
+            if (!parentChildId) return []; // shouldn't happen once needsBatch is true, but never submit an unassigned line
             return Array.from({ length: i.quantity }, () => ({
               parentChildId,
+              deliveryDateId: i.deliveryDateId,
               menuItemId: i.menuItemId,
               choice: i.choice,
               size: i.size,
@@ -151,8 +164,8 @@ export default function CartScreen() {
         checkoutUrl = result.checkoutUrl;
       } else {
         const result = await createOrder({
-          deliveryDateId,
-          schoolId,
+          deliveryDateId: items[0].deliveryDateId,
+          schoolId: items[0].schoolId,
           studentName: effectiveStudentName,
           grade: effectiveGrade,
           parentName: effParentName,
@@ -207,9 +220,11 @@ export default function CartScreen() {
         <ScreenHeader
           title="Your cart"
           subtitle={
-            deliveryDate
-              ? `${fmtDate(deliveryDate.deliveryDate)} · ${deliveryDate.school.name}`
-              : `${unitCount} item${unitCount === 1 ? "" : "s"}`
+            isMultiSchool
+              ? `${unitCount} item${unitCount === 1 ? "" : "s"} across ${schoolIds.length} locations`
+              : deliveryDate
+                ? `${fmtDate(deliveryDate.deliveryDate)} · ${deliveryDate.school.name}`
+                : `${unitCount} item${unitCount === 1 ? "" : "s"}`
           }
           onBack={() => router.back()}
           safeArea={false}
@@ -222,8 +237,15 @@ export default function CartScreen() {
             {/* Items */}
             <Card style={s.card}>
               <Eyebrow>{`${unitCount} item${unitCount === 1 ? "" : "s"}`}</Eyebrow>
-              {items.map((item, idx) => {
-                const menuItem = deliveryDate?.menuItems.find((m) => m.id === item.menuItemId);
+              {/* When the cart spans more than one school, group items by
+                  school with a small header above each group so a mixed
+                  cart never looks like an undifferentiated list — a
+                  parent should always be able to see which items belong
+                  to which location at a glance. */}
+              {(isMultiSchool ? [...items].sort((a, b) => a.schoolId.localeCompare(b.schoolId)) : items).map(
+                (item, idx, sortedItems) => {
+                const itemDate = deliveryDateById.get(item.deliveryDateId);
+                const menuItem = itemDate?.menuItems.find((m) => m.id === item.menuItemId);
                 const lineTotal = item.lineTotalCents * item.quantity;
                 const mods = [
                   item.size,
@@ -231,12 +253,19 @@ export default function CartScreen() {
                   ...item.additions.map((a) => `+ ${a}`),
                   ...item.removals.map((r) => `- ${r}`),
                 ].filter(Boolean);
+                const showSchoolHeader =
+                  isMultiSchool && (idx === 0 || sortedItems[idx - 1].schoolId !== item.schoolId);
                 return (
+                  <View key={item.cartKey}>
+                    {showSchoolHeader ? (
+                      <Text style={[s.schoolGroupHeader, { color: theme.textMuted }]}>
+                        {itemDate?.school.name ?? "Unknown location"}
+                      </Text>
+                    ) : null}
                   <View
-                    key={item.cartKey}
                     style={[
                       s.itemRow,
-                      idx < items.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border },
+                      idx < sortedItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border },
                     ]}
                   >
                     <View style={{ flex: 1 }}>
@@ -314,6 +343,7 @@ export default function CartScreen() {
                         </View>
                       ) : null}
                     </View>
+                  </View>
                   </View>
                 );
               })}
@@ -522,6 +552,7 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     itemName: { fontSize: 14, fontWeight: "700" },
     itemMods: { fontSize: 12, marginTop: 1 },
     itemPrice: { fontSize: 13, fontWeight: "700", marginTop: 3 },
+    schoolGroupHeader: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4, paddingTop: 12, paddingBottom: 4 },
     itemEaterChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
     itemEaterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1.5 },
     itemEaterChipText: { fontSize: 11.5, fontWeight: "600" },
