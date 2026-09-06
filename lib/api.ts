@@ -370,6 +370,24 @@ export const createOrder = (data: {
   items: { menuItemId: string; choice?: string; size?: string; additions?: string[]; removals?: string[] }[];
 }) => apiPost<{ checkoutUrl: string; orderId: string }>("/api/mobile/native/order", data);
 
+/**
+ * Ad-hoc equivalent of createOrder for a cart with items assigned to more
+ * than one saved child. One payment; the server creates one Order per
+ * item after payment, each correctly attributed to its own child — see
+ * docs/mobile-api-contract.md in the web repo for the full contract.
+ */
+export const createCartCheckout = (data: {
+  deliveryDateId: string;
+  items: {
+    parentChildId: string;
+    menuItemId: string;
+    choice?: string;
+    size?: string;
+    additions?: string[];
+    removals?: string[];
+  }[];
+}) => apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>("/api/mobile/native/cart-checkout", data);
+
 /** Permanently deletes the signed-in parent's account (App Store 5.1.1(v)). */
 export const deleteAccount = () =>
   apiDelete<{ ok: true }>("/api/mobile/native/account");

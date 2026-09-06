@@ -211,3 +211,50 @@ describe("useCart.total() and count() — adversarial", () => {
     expect(useCart.getState().count()).toBe(1);
   });
 });
+
+// ── assignItemToChild (multi-child single-day checkout) ────────────────────
+
+describe("useCart.assignItemToChild()", () => {
+  test("assigns a parentChildId to the target line only", () => {
+    useCart.getState().addItem(makeItem({ menuItemId: "burger", lineTotalCents: 1099 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ menuItemId: "tenders", lineTotalCents: 999 }), "dd-1", "sch-1");
+    const [burgerKey, tendersKey] = useCart.getState().items.map((i) => i.cartKey);
+
+    useCart.getState().assignItemToChild(burgerKey, "child-hana");
+
+    const items = useCart.getState().items;
+    expect(items.find((i) => i.cartKey === burgerKey)?.parentChildId).toBe("child-hana");
+    expect(items.find((i) => i.cartKey === tendersKey)?.parentChildId).toBeUndefined();
+  });
+
+  test("reassigning the same line to a different child overwrites, doesn't duplicate", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    const [key] = useCart.getState().items.map((i) => i.cartKey);
+
+    useCart.getState().assignItemToChild(key, "child-hana");
+    useCart.getState().assignItemToChild(key, "child-hiba");
+
+    expect(useCart.getState().items).toHaveLength(1);
+    expect(useCart.getState().items[0].parentChildId).toBe("child-hiba");
+  });
+
+  test("assigning to a nonexistent cartKey is a safe no-op", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    useCart.getState().assignItemToChild("does-not-exist", "child-hana");
+
+    expect(useCart.getState().items).toHaveLength(1);
+    expect(useCart.getState().items[0].parentChildId).toBeUndefined();
+  });
+
+  test("does not affect quantity, price, or other fields on the assigned line", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 1099 }), "dd-1", "sch-1");
+    const [key] = useCart.getState().items.map((i) => i.cartKey);
+
+    useCart.getState().assignItemToChild(key, "child-hana");
+
+    const item = useCart.getState().items[0];
+    expect(item.lineTotalCents).toBe(1099);
+    expect(item.quantity).toBe(1);
+    expect(useCart.getState().total()).toBe(1099);
+  });
+});

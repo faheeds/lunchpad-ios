@@ -97,6 +97,12 @@ export type CartItem = {
   lineTotalCents: number;
   /** Number of identical units of this configuration. Always ≥ 1. */
   quantity: number;
+  /** Which saved child this line is for. Undefined = not yet assigned
+   *  (falls back to whichever single eater is selected for the whole
+   *  cart, preserving today's behavior for guests and single-child
+   *  accounts). Only meaningful once assigned — see cart.tsx's
+   *  assignItemToChild usage for how this gets set. */
+  parentChildId?: string;
 };
 
 /** Build a deterministic key from a cart-item configuration. Same options
