@@ -24,6 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders, notifyMe } from "../../lib/api";
+import { pickNextDate } from "../../lib/nextDate";
 import { useTheme } from "../../lib/theme";
 import {
   getCarouselPhotos,
@@ -319,8 +320,8 @@ export default function HomeScreen() {
   const ordersQ = useQuery({ queryKey: ["orders"], queryFn: fetchOrders, retry: false });
 
   const dates = datesQ.data ?? [];
-  const nextDate = dates[0];
   const children = accountQ.data?.children ?? [];
+  const nextDate = pickNextDate(dates, children.map((c) => c.schoolId));
   const firstName = accountQ.data?.name?.trim().split(/\s+/)[0];
   const restaurantName = theme.restaurant?.name;
 
