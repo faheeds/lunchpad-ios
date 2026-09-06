@@ -26,6 +26,7 @@ import { useRefreshTheme } from "../../lib/theme-context";
 import { Screen, ScreenHeader, Card, Eyebrow, SectionTitle } from "../../components/ui";
 import { diffChildForm, type ChildFormSnapshot } from "../../lib/childEdit";
 import type { Child } from "../../lib/types";
+import { STANDARD_GRADES } from "../../lib/grades";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -68,20 +69,23 @@ export default function AccountScreen() {
   const schools = useMemo(() => {
     const map = new Map<
       string,
-      { id: string; name: string; locationType?: "SCHOOL" | "OFFICE" }
+      { id: string; name: string; locationType?: "SCHOOL" | "OFFICE"; grades?: string[] }
     >();
     (dates ?? []).forEach((d) =>
       map.set(d.schoolId, {
         id: d.schoolId,
         name: d.school.name,
         locationType: d.school.locationType,
+        grades: d.school.grades,
       }),
     );
     return [...map.values()];
   }, [dates]);
   const effectiveSchoolId = selectedSchoolId ?? (schools.length === 1 ? schools[0].id : null);
-  const effectiveSchoolIsOffice =
-    schools.find((sc) => sc.id === effectiveSchoolId)?.locationType === "OFFICE";
+  const effectiveSchool = schools.find((sc) => sc.id === effectiveSchoolId);
+  const effectiveSchoolIsOffice = effectiveSchool?.locationType === "OFFICE";
+  const effectiveSchoolGrades =
+    effectiveSchool?.grades?.length ? effectiveSchool.grades : STANDARD_GRADES;
 
   function resetChildForm() {
     setShowAddChild(false);
@@ -448,13 +452,33 @@ export default function AccountScreen() {
                     autoCapitalize="words"
                   />
                   {effectiveSchoolIsOffice ? null : (
-                    <TextInput
-                      style={s.input}
-                      value={childGrade}
-                      onChangeText={setChildGrade}
-                      placeholder="Grade or group (e.g. 3rd)"
-                      placeholderTextColor={theme.textMuted}
-                    />
+                    <View style={s.schoolChips}>
+                      {effectiveSchoolGrades.map((g) => {
+                        const on = childGrade === g;
+                        return (
+                          <TouchableOpacity
+                            key={g}
+                            onPress={() => setChildGrade(g)}
+                            style={[
+                              s.schoolChip,
+                              {
+                                backgroundColor: on ? theme.primary : theme.dark,
+                                borderColor: on ? theme.primary : theme.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                s.schoolChipText,
+                                { color: on ? theme.textOnPrimary : theme.textPrimary },
+                              ]}
+                            >
+                              {g}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   )}
                   <TextInput
                     style={s.input}
