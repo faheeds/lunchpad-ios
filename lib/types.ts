@@ -4,6 +4,10 @@ export type School = {
   timezone: string;
   /** "SCHOOL" or "OFFICE" — drives school-vs-office wording in the app. */
   locationType?: "SCHOOL" | "OFFICE";
+  /** Operator-configured grades/sections for this school, shown in the
+   *  add-child grade picker. Empty or absent = fall back to
+   *  STANDARD_GRADES (lib/grades.ts) rather than showing nothing. */
+  grades?: string[];
 };
 
 export type MenuOption = {
