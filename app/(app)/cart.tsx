@@ -7,7 +7,7 @@
  * minimal manual form.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -45,7 +45,15 @@ export default function CartScreen() {
   const s = styles(theme);
 
   const items = useCart((st) => st.items);
-  const schoolIds = useCart((st) => st.schoolIds());
+  // Computed locally from `items` (already a stable, properly-subscribed
+  // reference) via useMemo, rather than calling the store's schoolIds()
+  // selector directly in useCart(). schoolIds() returns a brand-new array
+  // every call, and Zustand's default equality check is by reference —
+  // subscribing to it that way creates a new "changed" value on every
+  // single render, which creates an infinite re-render loop the moment
+  // this screen mounts. This is exactly what caused a real crash
+  // ("Something went wrong") specifically on opening the cart.
+  const schoolIds = useMemo(() => [...new Set(items.map((i) => i.schoolId))], [items]);
   const incrementItem = useCart((st) => st.incrementItem);
   const decrementItem = useCart((st) => st.decrementItem);
   const assignItemToChild = useCart((st) => st.assignItemToChild);
