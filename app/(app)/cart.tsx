@@ -26,7 +26,7 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
-import { fetchAccount, fetchDeliveryDates, createOrder } from "../../lib/api";
+import { fetchAccount, fetchDeliveryDates, createOrder, createCartCheckout } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, ScreenHeader, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
@@ -49,6 +49,7 @@ export default function CartScreen() {
   const schoolId = useCart((st) => st.schoolId);
   const incrementItem = useCart((st) => st.incrementItem);
   const decrementItem = useCart((st) => st.decrementItem);
+  const assignItemToChild = useCart((st) => st.assignItemToChild);
   const total = useCart((st) => st.total());
   const unitCount = useCart((st) => st.count());
 
@@ -122,24 +123,53 @@ export default function CartScreen() {
     setSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
-      const { checkoutUrl } = await createOrder({
-        deliveryDateId,
-        schoolId,
-        studentName: effectiveStudentName,
-        grade: effectiveGrade,
-        parentName: effParentName,
-        parentEmail: effParentEmail,
-        allergyNotes: effectiveAllergyNotes,
-        items: items.flatMap((i) =>
-          Array.from({ length: i.quantity }, () => ({
-            menuItemId: i.menuItemId,
-            choice: i.choice,
-            size: i.size,
-            additions: i.additions,
-            removals: i.removals,
-          })),
-        ),
-      });
+      // Effective child per item: whatever was explicitly assigned via
+      // the per-item picker, falling back to the single selected eater —
+      // this fallback is what keeps guest checkout and single-child
+      // accounts working exactly as before, with zero picker shown.
+      const effectiveChildIdFor = (i: (typeof items)[number]) => i.parentChildId ?? selectedChildId;
+      const distinctChildIds = new Set(items.map(effectiveChildIdFor).filter(Boolean));
+      const isMultiChild = distinctChildIds.size > 1;
+
+      let checkoutUrl: string;
+      if (isMultiChild) {
+        const result = await createCartCheckout({
+          deliveryDateId,
+          items: items.flatMap((i) => {
+            const parentChildId = effectiveChildIdFor(i);
+            if (!parentChildId) return []; // shouldn't happen once isMultiChild is true, but never submit an unassigned line
+            return Array.from({ length: i.quantity }, () => ({
+              parentChildId,
+              menuItemId: i.menuItemId,
+              choice: i.choice,
+              size: i.size,
+              additions: i.additions,
+              removals: i.removals,
+            }));
+          }),
+        });
+        checkoutUrl = result.checkoutUrl;
+      } else {
+        const result = await createOrder({
+          deliveryDateId,
+          schoolId,
+          studentName: effectiveStudentName,
+          grade: effectiveGrade,
+          parentName: effParentName,
+          parentEmail: effParentEmail,
+          allergyNotes: effectiveAllergyNotes,
+          items: items.flatMap((i) =>
+            Array.from({ length: i.quantity }, () => ({
+              menuItemId: i.menuItemId,
+              choice: i.choice,
+              size: i.size,
+              additions: i.additions,
+              removals: i.removals,
+            })),
+          ),
+        });
+        checkoutUrl = result.checkoutUrl;
+      }
       const result = await WebBrowser.openAuthSessionAsync(checkoutUrl, "lunchpad://checkout/success");
       if (result.type === "success" && result.url && result.url.includes("/checkout/success")) {
         const match = result.url.match(/[?&]orderId=([^&]+)/);
@@ -209,46 +239,80 @@ export default function CartScreen() {
                       idx < items.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border },
                     ]}
                   >
-                    <FoodImage uri={menuItem?.imageUrl} seed={item.menuItemId} size={48} radius={11} />
                     <View style={{ flex: 1 }}>
-                      <Text style={[s.itemName, { color: theme.textPrimary }]} numberOfLines={1}>
-                        {item.itemName}
-                      </Text>
-                      {mods.length > 0 ? (
-                        <Text style={[s.itemMods, { color: theme.textMuted }]} numberOfLines={2}>
-                          {mods.join(" · ")}
-                        </Text>
+                      <View style={{ flexDirection: "row", gap: 12 }}>
+                        <FoodImage uri={menuItem?.imageUrl} seed={item.menuItemId} size={48} radius={11} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.itemName, { color: theme.textPrimary }]} numberOfLines={1}>
+                            {item.itemName}
+                          </Text>
+                          {mods.length > 0 ? (
+                            <Text style={[s.itemMods, { color: theme.textMuted }]} numberOfLines={2}>
+                              {mods.join(" · ")}
+                            </Text>
+                          ) : null}
+                          <Text style={[s.itemPrice, { color: theme.primary }]}>{formatPrice(lineTotal)}</Text>
+                        </View>
+                        <View style={[s.qty, { backgroundColor: theme.dark }]}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                              decrementItem(item.cartKey);
+                            }}
+                            style={s.qtyBtn}
+                            hitSlop={6}
+                            accessibilityLabel={item.quantity > 1 ? "Decrease quantity" : "Remove item"}
+                          >
+                            <Ionicons
+                              name={item.quantity > 1 ? "remove" : "trash-outline"}
+                              size={16}
+                              color={theme.textPrimary}
+                            />
+                          </TouchableOpacity>
+                          <Text style={[s.qtyValue, { color: theme.textPrimary }]}>{item.quantity}</Text>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                              incrementItem(item.cartKey);
+                            }}
+                            style={s.qtyBtn}
+                            hitSlop={6}
+                            accessibilityLabel="Increase quantity"
+                          >
+                            <Ionicons name="add" size={16} color={theme.textPrimary} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      {children.length > 1 ? (
+                        <View style={s.itemEaterChips}>
+                          {children.map((c) => {
+                            const effectiveItemChildId = item.parentChildId ?? selectedChildId;
+                            const on = effectiveItemChildId === c.id;
+                            return (
+                              <TouchableOpacity
+                                key={c.id}
+                                onPress={() => assignItemToChild(item.cartKey, c.id)}
+                                style={[
+                                  s.itemEaterChip,
+                                  {
+                                    backgroundColor: on ? theme.primary : theme.dark,
+                                    borderColor: on ? theme.primary : theme.border,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    s.itemEaterChipText,
+                                    { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                  ]}
+                                >
+                                  {c.studentName}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
                       ) : null}
-                      <Text style={[s.itemPrice, { color: theme.primary }]}>{formatPrice(lineTotal)}</Text>
-                    </View>
-                    <View style={[s.qty, { backgroundColor: theme.dark }]}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                          decrementItem(item.cartKey);
-                        }}
-                        style={s.qtyBtn}
-                        hitSlop={6}
-                        accessibilityLabel={item.quantity > 1 ? "Decrease quantity" : "Remove item"}
-                      >
-                        <Ionicons
-                          name={item.quantity > 1 ? "remove" : "trash-outline"}
-                          size={16}
-                          color={theme.textPrimary}
-                        />
-                      </TouchableOpacity>
-                      <Text style={[s.qtyValue, { color: theme.textPrimary }]}>{item.quantity}</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                          incrementItem(item.cartKey);
-                        }}
-                        style={s.qtyBtn}
-                        hitSlop={6}
-                        accessibilityLabel="Increase quantity"
-                      >
-                        <Ionicons name="add" size={16} color={theme.textPrimary} />
-                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -458,6 +522,9 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     itemName: { fontSize: 14, fontWeight: "700" },
     itemMods: { fontSize: 12, marginTop: 1 },
     itemPrice: { fontSize: 13, fontWeight: "700", marginTop: 3 },
+    itemEaterChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+    itemEaterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1.5 },
+    itemEaterChipText: { fontSize: 11.5, fontWeight: "600" },
     qty: { flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 4, gap: 3 },
     qtyBtn: { width: 26, height: 26, borderRadius: 7, alignItems: "center", justifyContent: "center" },
     qtyValue: { minWidth: 20, textAlign: "center", fontSize: 14, fontWeight: "700" },

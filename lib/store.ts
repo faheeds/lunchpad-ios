@@ -17,6 +17,10 @@ type CartStore = {
   decrementItem: (cartKey: string) => void;
   /** Drop a line regardless of its current quantity. */
   removeItem: (cartKey: string) => void;
+  /** Assign a single cart line to a specific saved child, for the
+   *  multi-child single-day checkout flow (cart.tsx). Does not affect
+   *  any other line. */
+  assignItemToChild: (cartKey: string, parentChildId: string) => void;
   clearCart: () => void;
   /** Sum of (per-unit total × quantity) across all lines. */
   total: () => number;
@@ -92,6 +96,13 @@ export const useCart = create<CartStore>((set, get) => ({
       }
       return { items };
     }),
+
+  assignItemToChild: (cartKey, parentChildId) =>
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.cartKey === cartKey ? { ...i, parentChildId } : i,
+      ),
+    })),
 
   clearCart: () => set({ items: [], deliveryDateId: null, schoolId: null }),
 
