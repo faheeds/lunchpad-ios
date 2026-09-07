@@ -24,9 +24,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
-import { fetchAccount, fetchDeliveryDates, createOrder, createCartCheckout } from "../../lib/api";
+import { fetchAccount, fetchDeliveryDates, createOrder, createCartCheckout, addChild } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
 import { STANDARD_GRADES } from "../../lib/grades";
 import { effectiveChildIdFor } from "../../lib/effectiveChild";
@@ -64,6 +64,18 @@ export default function CartScreen() {
 
   const { data: account } = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
   const { data: dates } = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
+  const queryClient = useQueryClient();
+
+  // Every distinct school available to this restaurant, derived from the
+  // fetched delivery dates — used by the "add a child" form's school
+  // picker so a brand-new child can be created for ANY school the
+  // restaurant serves, not just whichever school the current cart
+  // happens to be scoped to.
+  const allSchools = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; grades?: string[] }>();
+    (dates ?? []).forEach((d) => map.set(d.school.id, d.school));
+    return [...map.values()];
+  }, [dates]);
 
   // Cart items each carry their own deliveryDateId now (to support items
   // for children at different schools in one cart) — look up each
@@ -88,8 +100,40 @@ export default function CartScreen() {
   const [studentName, setStudentName] = useState("");
   const [grade, setGrade] = useState("");
   const [allergyNotes, setAllergyNotes] = useState("");
+  // Which school a NEW (not-yet-saved) child being added is at — defaults
+  // to whichever school the cart is currently scoped to (the common
+  // case), but can be changed via the picker if the restaurant has more
+  // than one school and this child attends a different one.
+  const [addChildSchoolId, setAddChildSchoolId] = useState<string | null>(null);
+  // Controls whether the "add a child" form is showing. Separate from
+  // "does this account have zero saved children" — a parent with saved
+  // kids can still tap "+ Add another child" to add one more inline,
+  // right from the cart, without a trip to the Account tab.
+  const [showAddChildForm, setShowAddChildForm] = useState(false);
   const [editingParent, setEditingParent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const addChildMutation = useMutation({
+    mutationFn: () =>
+      addChild({
+        schoolId: addChildSchoolId ?? deliveryDate?.schoolId ?? "",
+        studentName: studentName.trim(),
+        grade: grade.trim(),
+        allergyNotes: allergyNotes.trim() || undefined,
+      }),
+    onSuccess: () => {
+      // Refetch account so the new child appears in `children` immediately
+      // — the per-item picker and eligibility filtering already handle
+      // any saved child correctly, no special-casing needed once this
+      // resolves.
+      queryClient.invalidateQueries({ queryKey: ["account"] });
+      setStudentName("");
+      setGrade("");
+      setAllergyNotes("");
+      setAddChildSchoolId(null);
+      setShowAddChildForm(false);
+    },
+  });
 
   // The account query resolves after first render, so the useState
   // initializers above start empty. Seed the form once when it arrives —
@@ -122,6 +166,18 @@ export default function CartScreen() {
 
   async function handleCheckout() {
     if (items.length === 0) return;
+    if (showAddChildForm) {
+      // The "add a child" form is open with unsaved input — checking out
+      // now would leave those items with no real, resolvable child to
+      // attribute them to (silently dropped from a multi-school batch
+      // payload), since only a REAL saved ParentChild can be assigned.
+      // Force saving first rather than letting that happen invisibly.
+      Alert.alert(
+        "Save this child first",
+        "Tap \"Save child\" to add them before checking out, or close the form to check out without them.",
+      );
+      return;
+    }
     if (!studentOk) {
       Alert.alert("Eater needed", "Enter the eater's name (at least 2 characters).");
       return;
@@ -372,11 +428,24 @@ export default function CartScreen() {
               })}
             </Card>
 
-            {/* Eater — only shown for guests/single-child accounts, who
-                have no per-item picker to use instead. For multi-child
-                accounts, the per-item "assign to eater" pills already
-                cover this; showing both was redundant and confusing. */}
-            {children.length <= 1 && (
+            {children.length > 1 && !showAddChildForm ? (
+              <TouchableOpacity
+                onPress={() => setShowAddChildForm(true)}
+                style={s.addChildLink}
+              >
+                <Ionicons name="add-circle-outline" size={16} color={theme.primary} />
+                <Text style={[s.addChildLinkText, { color: theme.primary }]}>Add another child</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* Eater — collapsed by default for multi-child accounts
+                (the per-item "assign to eater" pills already cover
+                that case), but stays reachable via "+ Add another
+                child" below so a parent can add a new kid inline,
+                right from the cart, without a trip to Account. Always
+                shown for guests (0 saved children) since there's
+                nothing else to show them yet. */}
+            {(children.length <= 1 || showAddChildForm) && (
             <Card style={s.card}>
               <Eyebrow>Eater</Eyebrow>
               {children.length > 0 ? (
@@ -386,7 +455,10 @@ export default function CartScreen() {
                     return (
                       <TouchableOpacity
                         key={c.id}
-                        onPress={() => setSelectedChildId(c.id)}
+                        onPress={() => {
+                          setSelectedChildId(c.id);
+                          setShowAddChildForm(false);
+                        }}
                         style={[
                           s.chip,
                           {
@@ -402,19 +474,22 @@ export default function CartScreen() {
                     );
                   })}
                   <TouchableOpacity
-                    onPress={() => setSelectedChildId(null)}
+                    onPress={() => {
+                      setSelectedChildId(null);
+                      setShowAddChildForm(true);
+                    }}
                     style={[
                       s.chip,
                       {
-                        backgroundColor: selectedChildId === null ? theme.primary : theme.dark,
-                        borderColor: selectedChildId === null ? theme.primary : theme.border,
+                        backgroundColor: showAddChildForm ? theme.primary : theme.dark,
+                        borderColor: showAddChildForm ? theme.primary : theme.border,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         s.chipText,
-                        { color: selectedChildId === null ? theme.textOnPrimary : theme.textPrimary },
+                        { color: showAddChildForm ? theme.textOnPrimary : theme.textPrimary },
                       ]}
                     >
                       + New
@@ -423,7 +498,7 @@ export default function CartScreen() {
                 </ScrollView>
               ) : null}
 
-              {selectedChild ? (
+              {selectedChild && !showAddChildForm ? (
                 <View style={[s.eaterCard, { backgroundColor: theme.dark }]}>
                   <View style={[s.avatar, { backgroundColor: theme.primary }]}>
                     <Text style={[s.avatarText, { color: theme.textOnPrimary }]}>
@@ -458,23 +533,51 @@ export default function CartScreen() {
                       autoCapitalize="words"
                     />
                   </Labeled>
-                   {isOffice ? null : (
+                   {isOffice ? null : (() => {
+                    const formSchoolId = addChildSchoolId ?? deliveryDate?.schoolId ?? null;
+                    const formSchool = allSchools.find((sc) => sc.id === formSchoolId);
+                    return (
                     <>
-                      {deliveryDate ? (
+                      {allSchools.length > 1 ? (
+                        <Labeled label="School">
+                          <View style={s.itemEaterChips}>
+                            {allSchools.map((sc) => {
+                              const on = formSchoolId === sc.id;
+                              return (
+                                <TouchableOpacity
+                                  key={sc.id}
+                                  onPress={() => setAddChildSchoolId(sc.id)}
+                                  style={[
+                                    s.itemEaterChip,
+                                    {
+                                      backgroundColor: on ? theme.primary : theme.dark,
+                                      borderColor: on ? theme.primary : theme.border,
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      s.itemEaterChipText,
+                                      { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                    ]}
+                                  >
+                                    {sc.name}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </Labeled>
+                      ) : formSchool ? (
                         <Labeled label="School">
                           <View style={[s.input, { justifyContent: "center" }]}>
-                            <Text style={{ color: theme.textPrimary, fontSize: 13 }}>
-                              {deliveryDate.school.name}
-                            </Text>
+                            <Text style={{ color: theme.textPrimary, fontSize: 13 }}>{formSchool.name}</Text>
                           </View>
                         </Labeled>
                       ) : null}
                       <Labeled label="Grade">
                         <View style={s.itemEaterChips}>
-                          {(deliveryDate?.school.grades?.length
-                            ? deliveryDate.school.grades
-                            : STANDARD_GRADES
-                          ).map((g) => {
+                          {(formSchool?.grades?.length ? formSchool.grades : STANDARD_GRADES).map((g) => {
                             const on = grade === g;
                             return (
                               <TouchableOpacity
@@ -502,7 +605,8 @@ export default function CartScreen() {
                         </View>
                       </Labeled>
                     </>
-                  )}
+                    );
+                  })()}
                   <Labeled label="Allergy notes (optional)">
                     <TextInput
                       style={s.input}
@@ -512,6 +616,25 @@ export default function CartScreen() {
                       placeholderTextColor={theme.textMuted}
                     />
                   </Labeled>
+                  <PrimaryButton
+                    label={addChildMutation.isPending ? "Saving..." : "Save child"}
+                    onPress={() => {
+                      if (studentName.trim().length < 2) {
+                        Alert.alert("Name needed", "Enter the child's name (at least 2 characters).");
+                        return;
+                      }
+                      if (!isOffice && !grade.trim()) {
+                        Alert.alert("Grade needed", "Pick the child's grade.");
+                        return;
+                      }
+                      if (!isOffice && !(addChildSchoolId ?? deliveryDate?.schoolId)) {
+                        Alert.alert("School needed", "Pick which school this child attends.");
+                        return;
+                      }
+                      addChildMutation.mutate();
+                    }}
+                    disabled={addChildMutation.isPending}
+                  />
                 </View>
               )}
             </Card>
@@ -616,6 +739,8 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     itemPrice: { fontSize: 13, fontWeight: "700", marginTop: 3 },
     schoolGroupHeader: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4, paddingTop: 12, paddingBottom: 4 },
     itemEaterChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+    addChildLink: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
+    addChildLinkText: { fontSize: 13, fontWeight: "600" },
     itemEaterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1.5 },
     itemEaterChipText: { fontSize: 11.5, fontWeight: "600" },
     qty: { flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 4, gap: 3 },
