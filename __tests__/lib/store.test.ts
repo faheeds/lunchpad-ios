@@ -282,3 +282,73 @@ describe("useCart.assignItemToChild()", () => {
     expect(useCart.getState().total()).toBe(1099);
   });
 });
+
+// ── Draft roster (cart redesign) ──────────────────────────────────────────
+
+import { isDraftChildId } from "../../lib/store";
+
+describe("useCart draft roster", () => {
+  test("addDraftChild adds to drafts and returns a usable id", () => {
+    const id = useCart.getState().addDraftChild({
+      studentName: "New Kid",
+      schoolId: "school-1",
+      grade: "3rd",
+    });
+    expect(useCart.getState().drafts).toHaveLength(1);
+    expect(useCart.getState().drafts[0].id).toBe(id);
+    expect(useCart.getState().drafts[0].studentName).toBe("New Kid");
+  });
+
+  test("every draft id is recognized by isDraftChildId, real ids are not", () => {
+    const id = useCart.getState().addDraftChild({ studentName: "X", schoolId: "s", grade: "K" });
+    expect(isDraftChildId(id)).toBe(true);
+    expect(isDraftChildId("cmtkf8zce0001f9mgp3edruv3")).toBe(false); // a real cuid-style id
+  });
+
+  test("two drafts added in the same session get distinct ids", () => {
+    const id1 = useCart.getState().addDraftChild({ studentName: "A", schoolId: "s", grade: "K" });
+    const id2 = useCart.getState().addDraftChild({ studentName: "B", schoolId: "s", grade: "K" });
+    expect(id1).not.toBe(id2);
+  });
+
+  test("assignItemToChild works identically for a draft id as for a real child id", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    const cartKey = useCart.getState().items[0].cartKey;
+    const draftId = useCart.getState().addDraftChild({ studentName: "New Kid", schoolId: "sch-1", grade: "2nd" });
+    useCart.getState().assignItemToChild(cartKey, draftId);
+    expect(useCart.getState().items[0].parentChildId).toBe(draftId);
+  });
+
+  test("removeDraftChild removes the draft and un-assigns any items pointing at them", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    const cartKey = useCart.getState().items[0].cartKey;
+    const draftId = useCart.getState().addDraftChild({ studentName: "New Kid", schoolId: "sch-1", grade: "2nd" });
+    useCart.getState().assignItemToChild(cartKey, draftId);
+
+    useCart.getState().removeDraftChild(draftId);
+
+    expect(useCart.getState().drafts).toHaveLength(0);
+    expect(useCart.getState().items[0].parentChildId).toBeUndefined();
+  });
+
+  test("removeDraftChild does not affect items assigned to a DIFFERENT draft", () => {
+    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ menuItemId: "other", lineTotalCents: 300 }), "dd-1", "sch-1");
+    const [key1, key2] = useCart.getState().items.map((i) => i.cartKey);
+    const draftA = useCart.getState().addDraftChild({ studentName: "A", schoolId: "sch-1", grade: "K" });
+    const draftB = useCart.getState().addDraftChild({ studentName: "B", schoolId: "sch-1", grade: "K" });
+    useCart.getState().assignItemToChild(key1, draftA);
+    useCart.getState().assignItemToChild(key2, draftB);
+
+    useCart.getState().removeDraftChild(draftA);
+
+    expect(useCart.getState().items.find((i) => i.cartKey === key1)?.parentChildId).toBeUndefined();
+    expect(useCart.getState().items.find((i) => i.cartKey === key2)?.parentChildId).toBe(draftB);
+  });
+
+  test("clearCart also clears drafts, not just items", () => {
+    useCart.getState().addDraftChild({ studentName: "New Kid", schoolId: "sch-1", grade: "2nd" });
+    useCart.getState().clearCart();
+    expect(useCart.getState().drafts).toHaveLength(0);
+  });
+});

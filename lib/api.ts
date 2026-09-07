@@ -319,7 +319,16 @@ export const addChild = (data: {
   studentName: string;
   grade: string;
   allergyNotes?: string;
-}) => apiPost("/api/mobile/native/account/children", data);
+}) =>
+  apiPost<{
+    id: string;
+    schoolId: string;
+    schoolName: string;
+    locationType?: "SCHOOL" | "OFFICE";
+    studentName: string;
+    grade: string;
+    allergyNotes: string;
+  }>("/api/mobile/native/account/children", data);
 
 export const editChild = (id: string, data: {
   studentName?: string;
