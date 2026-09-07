@@ -28,6 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
 import { fetchAccount, fetchDeliveryDates, createOrder, createCartCheckout } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
+import { effectiveChildIdFor } from "../../lib/effectiveChild";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, ScreenHeader, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
@@ -141,12 +142,13 @@ export default function CartScreen() {
     setSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
-      // Effective child per item: whatever was explicitly assigned via
-      // the per-item picker, falling back to the single selected eater —
-      // this fallback is what keeps guest checkout and single-child
-      // accounts working exactly as before, with zero picker shown.
-      const effectiveChildIdFor = (i: (typeof items)[number]) => i.parentChildId ?? selectedChildId;
-      const distinctChildIds = new Set(items.map(effectiveChildIdFor).filter(Boolean));
+      // Effective child per item: uses the shared effectiveChildIdFor
+      // (component-level, defined above) so this matches exactly what's
+      // shown in the per-item picker — no separate, potentially-diverging
+      // fallback logic here.
+      const distinctChildIds = new Set(
+        items.map((i) => effectiveChildIdFor(i, children, selectedChildId)).filter(Boolean),
+      );
       // Multiple distinct children OR multiple distinct schools both
       // require the batch endpoint — a single-order checkout can only
       // ever represent one child at one school.
@@ -156,7 +158,7 @@ export default function CartScreen() {
       if (needsBatch) {
         const result = await createCartCheckout({
           items: items.flatMap((i) => {
-            const parentChildId = effectiveChildIdFor(i);
+            const parentChildId = effectiveChildIdFor(i, children, selectedChildId);
             if (!parentChildId) return []; // shouldn't happen once needsBatch is true, but never submit an unassigned line
             return Array.from({ length: i.quantity }, () => ({
               parentChildId,
@@ -320,10 +322,21 @@ export default function CartScreen() {
                           </TouchableOpacity>
                         </View>
                       </View>
-                      {children.length > 1 ? (
+                      {(() => {
+                        // Only children whose own school matches this
+                        // item's school can be assigned to it -- without
+                        // this filter, the picker let you assign ANY
+                        // saved child to ANY item regardless of which
+                        // school they actually attend, and the mismatch
+                        // was only caught later at checkout (correctly
+                        // rejected there, but the user should never be
+                        // able to make this mistake in the first place).
+                        const eligibleChildren = children.filter((c) => c.schoolId === item.schoolId);
+                        if (eligibleChildren.length <= 1) return null;
+                        return (
                         <View style={s.itemEaterChips}>
-                          {children.map((c) => {
-                            const effectiveItemChildId = item.parentChildId ?? selectedChildId;
+                          {eligibleChildren.map((c) => {
+                            const effectiveItemChildId = effectiveChildIdFor(item, children, selectedChildId);
                             const on = effectiveItemChildId === c.id;
                             return (
                               <TouchableOpacity
@@ -349,7 +362,8 @@ export default function CartScreen() {
                             );
                           })}
                         </View>
-                      ) : null}
+                        );
+                      })()}
                     </View>
                   </View>
                   </View>
@@ -357,7 +371,11 @@ export default function CartScreen() {
               })}
             </Card>
 
-            {/* Eater */}
+            {/* Eater — only shown for guests/single-child accounts, who
+                have no per-item picker to use instead. For multi-child
+                accounts, the per-item "assign to eater" pills already
+                cover this; showing both was redundant and confusing. */}
+            {children.length <= 1 && (
             <Card style={s.card}>
               <Eyebrow>Eater</Eyebrow>
               {children.length > 0 ? (
@@ -462,6 +480,7 @@ export default function CartScreen() {
                 </View>
               )}
             </Card>
+            )}
 
             {/* Parent / receipt */}
             <Card style={s.card}>
