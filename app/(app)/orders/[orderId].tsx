@@ -128,6 +128,21 @@ export default function OrderDetail() {
       setReorderOpen(false);
       return;
     }
+    // Reordering assigns every cloned item to whoever the ORIGINAL order
+    // was for -- the sensible default, since a reorder is naturally "the
+    // same thing, for the same person, again." Historical orders placed
+    // before this field existed won't have it; rather than silently
+    // adding items with no assignee (impossible now -- every line
+    // requires one) or guessing, tell the user plainly and point them to
+    // adding items manually instead.
+    if (!order?.parentChildId) {
+      Alert.alert(
+        "Can't auto-reorder this one",
+        "This order doesn't have enough information to reorder automatically. Add these items from the menu instead.",
+      );
+      setReorderOpen(false);
+      return;
+    }
     // Reordering no longer wipes the cart before adding — cart items now
     // carry their own deliveryDateId/schoolId, so reordered items simply
     // add alongside whatever's already in the cart, same as adding from
@@ -142,6 +157,7 @@ export default function OrderDetail() {
           additions: line.additions,
           removals: line.removals,
           lineTotalCents: line.lineTotalCents,
+          parentChildId: order.parentChildId,
         },
         targetDate.id,
         targetDate.schoolId,

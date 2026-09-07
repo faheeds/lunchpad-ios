@@ -24,6 +24,7 @@ function makeItem(overrides: Partial<AddInput> = {}): AddInput {
     additions: [],
     removals: [],
     lineTotalCents: 1000,
+    parentChildId: "child-1",
     ...overrides,
   };
 }
@@ -240,15 +241,17 @@ describe("useCart.total() and count() — adversarial", () => {
 
 describe("useCart.assignItemToChild()", () => {
   test("assigns a parentChildId to the target line only", () => {
-    useCart.getState().addItem(makeItem({ menuItemId: "burger", lineTotalCents: 1099 }), "dd-1", "sch-1");
-    useCart.getState().addItem(makeItem({ menuItemId: "tenders", lineTotalCents: 999 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ menuItemId: "burger", parentChildId: "child-original", lineTotalCents: 1099 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ menuItemId: "tenders", parentChildId: "child-original", lineTotalCents: 999 }), "dd-1", "sch-1");
     const [burgerKey, tendersKey] = useCart.getState().items.map((i) => i.cartKey);
 
     useCart.getState().assignItemToChild(burgerKey, "child-hana");
 
     const items = useCart.getState().items;
     expect(items.find((i) => i.cartKey === burgerKey)?.parentChildId).toBe("child-hana");
-    expect(items.find((i) => i.cartKey === tendersKey)?.parentChildId).toBeUndefined();
+    // The other line keeps its ORIGINAL assignment from creation time --
+    // reassigning one line never touches any other line.
+    expect(items.find((i) => i.cartKey === tendersKey)?.parentChildId).toBe("child-original");
   });
 
   test("reassigning the same line to a different child overwrites, doesn't duplicate", () => {
@@ -263,11 +266,11 @@ describe("useCart.assignItemToChild()", () => {
   });
 
   test("assigning to a nonexistent cartKey is a safe no-op", () => {
-    useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ parentChildId: "child-original", lineTotalCents: 500 }), "dd-1", "sch-1");
     useCart.getState().assignItemToChild("does-not-exist", "child-hana");
 
     expect(useCart.getState().items).toHaveLength(1);
-    expect(useCart.getState().items[0].parentChildId).toBeUndefined();
+    expect(useCart.getState().items[0].parentChildId).toBe("child-original");
   });
 
   test("does not affect quantity, price, or other fields on the assigned line", () => {
@@ -319,7 +322,7 @@ describe("useCart draft roster", () => {
     expect(useCart.getState().items[0].parentChildId).toBe(draftId);
   });
 
-  test("removeDraftChild removes the draft and un-assigns any items pointing at them", () => {
+  test("removeDraftChild removes the draft AND any cart line assigned to them (a line can't exist unassigned)", () => {
     useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
     const cartKey = useCart.getState().items[0].cartKey;
     const draftId = useCart.getState().addDraftChild({ studentName: "New Kid", schoolId: "sch-1", grade: "2nd" });
@@ -328,10 +331,10 @@ describe("useCart draft roster", () => {
     useCart.getState().removeDraftChild(draftId);
 
     expect(useCart.getState().drafts).toHaveLength(0);
-    expect(useCart.getState().items[0].parentChildId).toBeUndefined();
+    expect(useCart.getState().items).toHaveLength(0);
   });
 
-  test("removeDraftChild does not affect items assigned to a DIFFERENT draft", () => {
+  test("removeDraftChild does not affect a line assigned to a DIFFERENT draft", () => {
     useCart.getState().addItem(makeItem({ lineTotalCents: 500 }), "dd-1", "sch-1");
     useCart.getState().addItem(makeItem({ menuItemId: "other", lineTotalCents: 300 }), "dd-1", "sch-1");
     const [key1, key2] = useCart.getState().items.map((i) => i.cartKey);
@@ -342,7 +345,7 @@ describe("useCart draft roster", () => {
 
     useCart.getState().removeDraftChild(draftA);
 
-    expect(useCart.getState().items.find((i) => i.cartKey === key1)?.parentChildId).toBeUndefined();
+    expect(useCart.getState().items.find((i) => i.cartKey === key1)).toBeUndefined();
     expect(useCart.getState().items.find((i) => i.cartKey === key2)?.parentChildId).toBe(draftB);
   });
 
@@ -350,5 +353,29 @@ describe("useCart draft roster", () => {
     useCart.getState().addDraftChild({ studentName: "New Kid", schoolId: "sch-1", grade: "2nd" });
     useCart.getState().clearCart();
     expect(useCart.getState().drafts).toHaveLength(0);
+  });
+
+  test("the exact real bug: the same item added for two different children stays two separate lines", () => {
+    // Reported directly: "I cannot order the same item for two different
+    // children as it gets associated with the same child." Confirms the
+    // fix at the store level, not just in buildCartKey's own unit tests.
+    useCart.getState().addItem(makeItem({ parentChildId: "child-hana", lineTotalCents: 1099 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ parentChildId: "child-hiba", lineTotalCents: 1099 }), "dd-1", "sch-1");
+
+    expect(useCart.getState().items).toHaveLength(2);
+    expect(useCart.getState().count()).toBe(2);
+    expect(useCart.getState().items[0].parentChildId).toBe("child-hana");
+    expect(useCart.getState().items[0].quantity).toBe(1);
+    expect(useCart.getState().items[1].parentChildId).toBe("child-hiba");
+    expect(useCart.getState().items[1].quantity).toBe(1);
+  });
+
+  test("adding the same item for the SAME child again still merges into one line, quantity 2", () => {
+    useCart.getState().addItem(makeItem({ parentChildId: "child-hana", lineTotalCents: 1099 }), "dd-1", "sch-1");
+    useCart.getState().addItem(makeItem({ parentChildId: "child-hana", lineTotalCents: 1099 }), "dd-1", "sch-1");
+
+    expect(useCart.getState().items).toHaveLength(1);
+    expect(useCart.getState().items[0].quantity).toBe(2);
+    expect(useCart.getState().count()).toBe(2);
   });
 });
