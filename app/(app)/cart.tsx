@@ -1,10 +1,17 @@
 /**
- * Cart — review the order, confirm the eater, and check out.
+ * Cart — review the order, assign each item to a person, and check out.
  *
- * Rebuilt as a summary rather than a form: for signed-in customers the
- * saved eater is pre-selected (with their allergy shown as a confirmed
- * chip) and parent info is collapsed behind "Edit". Guests get the
- * minimal manual form.
+ * Redesigned around one simple rule instead of the tangle of global
+ * "selected eater" / "add child form" state this screen used to carry:
+ * every item always has its own independent "Assign to" control, showing
+ * one shared roster (saved children + anyone added as a draft during
+ * this cart session). There is no other place in the app that answers
+ * "who is this for" -- no global selection, no separate guest-only form,
+ * no branching between a "simple" and "complex" checkout path. A brand
+ * new person added via "+ Add a child" is usable immediately, the same
+ * way an already-saved child is, and only actually becomes a permanent
+ * saved child at checkout time, and only if something ended up assigned
+ * to them.
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -19,17 +26,17 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCart, formatPrice } from "../../lib/store";
-import { fetchAccount, fetchDeliveryDates, createOrder, createCartCheckout, addChild } from "../../lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { useCart, formatPrice, isDraftChildId } from "../../lib/store";
+import { fetchAccount, fetchDeliveryDates, createCartCheckout, addChild } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
 import { STANDARD_GRADES } from "../../lib/grades";
-import { effectiveChildIdFor } from "../../lib/effectiveChild";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, ScreenHeader, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
@@ -41,16 +48,27 @@ function fmtDate(iso: string): string {
   return `${DAYS[d.getUTCDay()]}, ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
+// A roster entry -- either a real saved child or a draft added this
+// session. Only the fields every item-assignment UI actually needs.
+type RosterPerson = {
+  id: string;
+  studentName: string;
+  schoolId: string;
+  grade: string;
+  allergyNotes?: string;
+};
+
 export default function CartScreen() {
   const router = useRouter();
   const theme = useTheme();
   const s = styles(theme);
 
   const items = useCart((st) => st.items);
+  const drafts = useCart((st) => st.drafts);
   // Computed locally from `items` (already a stable, properly-subscribed
   // reference) via useMemo, rather than calling the store's schoolIds()
   // selector directly in useCart(). schoolIds() returns a brand-new array
-  // every call, and Zustand's default equality check is by reference —
+  // every call, and Zustand's default equality check is by reference --
   // subscribing to it that way creates a new "changed" value on every
   // single render, which creates an infinite re-render loop the moment
   // this screen mounts. This is exactly what caused a real crash
@@ -59,16 +77,16 @@ export default function CartScreen() {
   const incrementItem = useCart((st) => st.incrementItem);
   const decrementItem = useCart((st) => st.decrementItem);
   const assignItemToChild = useCart((st) => st.assignItemToChild);
+  const addDraftChild = useCart((st) => st.addDraftChild);
   const total = useCart((st) => st.total());
   const unitCount = useCart((st) => st.count());
 
   const { data: account } = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
   const { data: dates } = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
-  const queryClient = useQueryClient();
 
   // Every distinct school available to this restaurant, derived from the
-  // fetched delivery dates — used by the "add a child" form's school
-  // picker so a brand-new child can be created for ANY school the
+  // fetched delivery dates -- used by the "add a child" modal's school
+  // picker so a brand-new person can be added for any school the
   // restaurant serves, not just whichever school the current cart
   // happens to be scoped to.
   const allSchools = useMemo(() => {
@@ -77,113 +95,113 @@ export default function CartScreen() {
     return [...map.values()];
   }, [dates]);
 
-  // Cart items each carry their own deliveryDateId now (to support items
-  // for children at different schools in one cart) — look up each
-  // item's own delivery date rather than assuming one shared date for
-  // the whole screen.
+  // Cart items each carry their own deliveryDateId (to support items for
+  // people at different schools in one cart) -- look up each item's own
+  // delivery date rather than assuming one shared date for the whole
+  // screen.
   const deliveryDateById = new Map((dates ?? []).map((d) => [d.id, d]));
   const isMultiSchool = schoolIds.length > 1;
-  // For the single-school case (the common one), these describe the
-  // one delivery date the whole cart shares. For a multi-school cart
-  // they describe only the FIRST item's date — only used as a fallback
-  // for guest-checkout fields below, which don't make sense to ask
-  // per-item.
+  // Only used as a fallback for the office-vs-school wording below, and
+  // for the header subtitle in the common single-school case.
   const deliveryDate = items[0] ? deliveryDateById.get(items[0].deliveryDateId) : undefined;
   const isOffice = deliveryDate?.school.locationType === "OFFICE";
-  const children = account?.children ?? [];
 
-  const [selectedChildId, setSelectedChildId] = useState<string | null>(
-    account?.children[0]?.id ?? null,
+  // The one shared roster every item's "Assign to" picker reads from --
+  // saved children plus anyone added as a draft during this cart
+  // session. No other list of "who could this be for" exists anywhere
+  // else in this screen.
+  const roster: RosterPerson[] = useMemo(
+    () => [...(account?.children ?? []), ...drafts],
+    [account, drafts],
   );
+
   const [parentName, setParentName] = useState(account?.name ?? "");
   const [parentEmail, setParentEmail] = useState(account?.email ?? "");
-  const [studentName, setStudentName] = useState("");
-  const [grade, setGrade] = useState("");
-  const [allergyNotes, setAllergyNotes] = useState("");
-  // Which school a NEW (not-yet-saved) child being added is at — defaults
-  // to whichever school the cart is currently scoped to (the common
-  // case), but can be changed via the picker if the restaurant has more
-  // than one school and this child attends a different one.
-  const [addChildSchoolId, setAddChildSchoolId] = useState<string | null>(null);
-  // Controls whether the "add a child" form is showing. Separate from
-  // "does this account have zero saved children" — a parent with saved
-  // kids can still tap "+ Add another child" to add one more inline,
-  // right from the cart, without a trip to the Account tab.
-  const [showAddChildForm, setShowAddChildForm] = useState(false);
   const [editingParent, setEditingParent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const addChildMutation = useMutation({
-    mutationFn: () =>
-      addChild({
-        schoolId: addChildSchoolId ?? deliveryDate?.schoolId ?? "",
-        studentName: studentName.trim(),
-        grade: grade.trim(),
-        allergyNotes: allergyNotes.trim() || undefined,
-      }),
-    onSuccess: () => {
-      // Refetch account so the new child appears in `children` immediately
-      // — the per-item picker and eligibility filtering already handle
-      // any saved child correctly, no special-casing needed once this
-      // resolves.
-      queryClient.invalidateQueries({ queryKey: ["account"] });
-      setStudentName("");
-      setGrade("");
-      setAllergyNotes("");
-      setAddChildSchoolId(null);
-      setShowAddChildForm(false);
-    },
-  });
+  // Which item's "+ Add a child" modal is open, if any. Null = closed.
+  const [addingForCartKey, setAddingForCartKey] = useState<string | null>(null);
+  const [modalName, setModalName] = useState("");
+  const [modalSchoolId, setModalSchoolId] = useState<string | null>(null);
+  const [modalGrade, setModalGrade] = useState("");
+  const [modalAllergy, setModalAllergy] = useState("");
+
+  function openAddPersonModal(cartKey: string, defaultSchoolId: string) {
+    setAddingForCartKey(cartKey);
+    setModalName("");
+    setModalSchoolId(defaultSchoolId);
+    setModalGrade("");
+    setModalAllergy("");
+  }
+
+  function closeAddPersonModal() {
+    setAddingForCartKey(null);
+  }
+
+  function submitAddPersonModal() {
+    if (modalName.trim().length < 2) {
+      Alert.alert("Name needed", "Enter their name (at least 2 characters).");
+      return;
+    }
+    if (!isOffice && !modalGrade.trim()) {
+      Alert.alert("Grade needed", "Pick their grade.");
+      return;
+    }
+    if (!isOffice && !modalSchoolId) {
+      Alert.alert("School needed", "Pick which school they attend.");
+      return;
+    }
+    const newId = addDraftChild({
+      studentName: modalName.trim(),
+      schoolId: modalSchoolId ?? deliveryDate?.schoolId ?? "",
+      grade: modalGrade.trim(),
+      allergyNotes: modalAllergy.trim() || undefined,
+    });
+    if (addingForCartKey) {
+      assignItemToChild(addingForCartKey, newId);
+    }
+    closeAddPersonModal();
+  }
 
   // The account query resolves after first render, so the useState
-  // initializers above start empty. Seed the form once when it arrives —
-  // without this the saved name/email never populate (checkout then ships
-  // an empty/too-short parentName the server rejects) and the saved eater
-  // is never pre-selected.
+  // initializers above start empty. Seed the form once when it arrives --
+  // without this the saved name/email never populate (checkout then
+  // ships an empty/too-short parentName the server rejects).
   const initedRef = useRef(false);
   useEffect(() => {
     if (account && !initedRef.current) {
       initedRef.current = true;
       if (account.name) setParentName(account.name);
       if (account.email) setParentEmail(account.email);
-      if (account.children[0]) setSelectedChildId(account.children[0].id);
     }
   }, [account]);
 
-  const selectedChild = children.find((c) => c.id === selectedChildId);
-  const effectiveStudentName = selectedChild?.studentName ?? studentName;
-  const effectiveGrade = selectedChild?.grade ?? grade;
-  const effectiveAllergyNotes = selectedChild?.allergyNotes ?? allergyNotes;
   const effParentName = parentName.trim() || account?.name || "";
   const effParentEmail = parentEmail.trim() || account?.email || "";
 
   // Match the server order schema (lib/validation/order.ts): parentName
-  // and studentName need >= 2 chars, parentEmail must be a real address.
+  // needs >= 2 chars, parentEmail must be a real address.
   const nameOk = effParentName.trim().length >= 2;
   const emailOk = /^\S+@\S+\.\S+$/.test(effParentEmail.trim());
-  const studentOk = effectiveStudentName.trim().length >= 2;
-  const gradeOk = isOffice || effectiveGrade.trim().length >= 1;
 
   async function handleCheckout() {
     if (items.length === 0) return;
-    if (showAddChildForm) {
-      // The "add a child" form is open with unsaved input — checking out
-      // now would leave those items with no real, resolvable child to
-      // attribute them to (silently dropped from a multi-school batch
-      // payload), since only a REAL saved ParentChild can be assigned.
-      // Force saving first rather than letting that happen invisibly.
+    if (addingForCartKey) {
+      // The "add a child" modal is open with unsaved input -- resolve or
+      // close it first rather than letting it silently disappear.
       Alert.alert(
-        "Save this child first",
-        "Tap \"Save child\" to add them before checking out, or close the form to check out without them.",
+        "Finish adding this person",
+        'Tap "Add" to save them, or close the form to check out without them.',
       );
       return;
     }
-    if (!studentOk) {
-      Alert.alert("Eater needed", "Enter the eater's name (at least 2 characters).");
-      return;
-    }
-    if (!gradeOk) {
-      Alert.alert("Grade needed", "Enter the eater's grade or group.");
+    const unassigned = items.filter((i) => !i.parentChildId);
+    if (unassigned.length > 0) {
+      Alert.alert(
+        "Assign each item",
+        `${unassigned[0].itemName} still needs to be assigned to someone before checking out.`,
+      );
       return;
     }
     if (!nameOk) {
@@ -199,60 +217,45 @@ export default function CartScreen() {
     setSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
-      // Effective child per item: uses the shared effectiveChildIdFor
-      // (component-level, defined above) so this matches exactly what's
-      // shown in the per-item picker — no separate, potentially-diverging
-      // fallback logic here.
-      const distinctChildIds = new Set(
-        items.map((i) => effectiveChildIdFor(i, children, selectedChildId)).filter(Boolean),
-      );
-      // Multiple distinct children OR multiple distinct schools both
-      // require the batch endpoint — a single-order checkout can only
-      // ever represent one child at one school.
-      const needsBatch = distinctChildIds.size > 1 || schoolIds.length > 1;
-
-      let checkoutUrl: string;
-      if (needsBatch) {
-        const result = await createCartCheckout({
-          items: items.flatMap((i) => {
-            const parentChildId = effectiveChildIdFor(i, children, selectedChildId);
-            if (!parentChildId) return []; // shouldn't happen once needsBatch is true, but never submit an unassigned line
-            return Array.from({ length: i.quantity }, () => ({
-              parentChildId,
-              deliveryDateId: i.deliveryDateId,
-              menuItemId: i.menuItemId,
-              choice: i.choice,
-              size: i.size,
-              additions: i.additions,
-              removals: i.removals,
-            }));
-          }),
+      // Convert every distinct draft actually used in the cart into a
+      // real saved child now, right before checkout -- not earlier (a
+      // draft the user added but never assigned anything to is simply
+      // discarded, never created) and not per-item (each unique draft
+      // becomes exactly one real child, however many items point at
+      // them).
+      const usedDraftIds = [...new Set(items.map((i) => i.parentChildId!).filter(isDraftChildId))];
+      const draftToRealId = new Map<string, string>();
+      for (const draftId of usedDraftIds) {
+        const draft = drafts.find((d) => d.id === draftId);
+        if (!draft) continue; // shouldn't happen -- every used draft id came from the roster
+        const created = await addChild({
+          schoolId: draft.schoolId,
+          studentName: draft.studentName,
+          grade: draft.grade,
+          allergyNotes: draft.allergyNotes,
         });
-        checkoutUrl = result.checkoutUrl;
-      } else {
-        const result = await createOrder({
-          deliveryDateId: items[0].deliveryDateId,
-          schoolId: items[0].schoolId,
-          studentName: effectiveStudentName,
-          grade: effectiveGrade,
-          parentName: effParentName,
-          parentEmail: effParentEmail,
-          allergyNotes: effectiveAllergyNotes,
-          items: items.flatMap((i) =>
-            Array.from({ length: i.quantity }, () => ({
-              menuItemId: i.menuItemId,
-              choice: i.choice,
-              size: i.size,
-              additions: i.additions,
-              removals: i.removals,
-            })),
-          ),
-        });
-        checkoutUrl = result.checkoutUrl;
+        draftToRealId.set(draftId, created.id);
       }
-      const result = await WebBrowser.openAuthSessionAsync(checkoutUrl, "lunchpad://checkout/success");
-      if (result.type === "success" && result.url && result.url.includes("/checkout/success")) {
-        const match = result.url.match(/[?&]orderId=([^&]+)/);
+
+      const result = await createCartCheckout({
+        items: items.flatMap((i) => {
+          const rawId = i.parentChildId!; // validated non-empty above
+          const parentChildId = draftToRealId.get(rawId) ?? rawId;
+          return Array.from({ length: i.quantity }, () => ({
+            parentChildId,
+            deliveryDateId: i.deliveryDateId,
+            menuItemId: i.menuItemId,
+            choice: i.choice,
+            size: i.size,
+            additions: i.additions,
+            removals: i.removals,
+          }));
+        }),
+      });
+
+      const authResult = await WebBrowser.openAuthSessionAsync(result.checkoutUrl, "lunchpad://checkout/success");
+      if (authResult.type === "success" && authResult.url && authResult.url.includes("/checkout/success")) {
+        const match = authResult.url.match(/[?&]orderId=([^&]+)/);
         const orderId = match ? decodeURIComponent(match[1]) : "";
         router.replace({ pathname: "/checkout/success", params: { orderId } });
       }
@@ -263,7 +266,7 @@ export default function CartScreen() {
     }
   }
 
-  // ── Empty ──────────────────────────────────────────────────────────────────
+  // -- Empty --------------------------------------------------------------
   if (items.length === 0) {
     return (
       <Screen>
@@ -290,355 +293,147 @@ export default function CartScreen() {
             isMultiSchool
               ? `${unitCount} item${unitCount === 1 ? "" : "s"} across ${schoolIds.length} locations`
               : deliveryDate
-                ? `${fmtDate(deliveryDate.deliveryDate)} · ${deliveryDate.school.name}`
+                ? `${fmtDate(deliveryDate.deliveryDate)} \u00b7 ${deliveryDate.school.name}`
                 : `${unitCount} item${unitCount === 1 ? "" : "s"}`
           }
           onBack={() => router.back()}
           safeArea={false}
         />
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
             {/* Items */}
             <Card style={s.card}>
               <Eyebrow>{`${unitCount} item${unitCount === 1 ? "" : "s"}`}</Eyebrow>
               {/* When the cart spans more than one school, group items by
                   school with a small header above each group so a mixed
-                  cart never looks like an undifferentiated list — a
+                  cart never looks like an undifferentiated list -- a
                   parent should always be able to see which items belong
                   to which location at a glance. */}
               {(isMultiSchool ? [...items].sort((a, b) => a.schoolId.localeCompare(b.schoolId)) : items).map(
                 (item, idx, sortedItems) => {
-                const itemDate = deliveryDateById.get(item.deliveryDateId);
-                const menuItem = itemDate?.menuItems.find((m) => m.id === item.menuItemId);
-                const lineTotal = item.lineTotalCents * item.quantity;
-                const mods = [
-                  item.size,
-                  item.choice,
-                  ...item.additions.map((a) => `+ ${a}`),
-                  ...item.removals.map((r) => `- ${r}`),
-                ].filter(Boolean);
-                const showSchoolHeader =
-                  isMultiSchool && (idx === 0 || sortedItems[idx - 1].schoolId !== item.schoolId);
-                return (
-                  <View key={item.cartKey}>
-                    {showSchoolHeader ? (
-                      <Text style={[s.schoolGroupHeader, { color: theme.textMuted }]}>
-                        {itemDate?.school.name ?? "Unknown location"}
-                      </Text>
-                    ) : null}
-                  <View
-                    style={[
-                      s.itemRow,
-                      idx < sortedItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border },
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", gap: 12 }}>
-                        <FoodImage uri={menuItem?.imageUrl} seed={item.menuItemId} size={48} radius={11} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={[s.itemName, { color: theme.textPrimary }]} numberOfLines={1}>
-                            {item.itemName}
-                          </Text>
-                          {mods.length > 0 ? (
-                            <Text style={[s.itemMods, { color: theme.textMuted }]} numberOfLines={2}>
-                              {mods.join(" · ")}
-                            </Text>
-                          ) : null}
-                          <Text style={[s.itemPrice, { color: theme.primary }]}>{formatPrice(lineTotal)}</Text>
-                        </View>
-                        <View style={[s.qty, { backgroundColor: theme.dark }]}>
-                          <TouchableOpacity
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                              decrementItem(item.cartKey);
-                            }}
-                            style={s.qtyBtn}
-                            hitSlop={6}
-                            accessibilityLabel={item.quantity > 1 ? "Decrease quantity" : "Remove item"}
-                          >
-                            <Ionicons
-                              name={item.quantity > 1 ? "remove" : "trash-outline"}
-                              size={16}
-                              color={theme.textPrimary}
-                            />
-                          </TouchableOpacity>
-                          <Text style={[s.qtyValue, { color: theme.textPrimary }]}>{item.quantity}</Text>
-                          <TouchableOpacity
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                              incrementItem(item.cartKey);
-                            }}
-                            style={s.qtyBtn}
-                            hitSlop={6}
-                            accessibilityLabel="Increase quantity"
-                          >
-                            <Ionicons name="add" size={16} color={theme.textPrimary} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                      {(() => {
-                        // Only children whose own school matches this
-                        // item's school can be assigned to it -- without
-                        // this filter, the picker let you assign ANY
-                        // saved child to ANY item regardless of which
-                        // school they actually attend, and the mismatch
-                        // was only caught later at checkout (correctly
-                        // rejected there, but the user should never be
-                        // able to make this mistake in the first place).
-                        const eligibleChildren = children.filter((c) => c.schoolId === item.schoolId);
-                        if (eligibleChildren.length <= 1) return null;
-                        return (
-                        <View style={s.itemEaterChips}>
-                          {eligibleChildren.map((c) => {
-                            const effectiveItemChildId = effectiveChildIdFor(item, children, selectedChildId);
-                            const on = effectiveItemChildId === c.id;
-                            return (
-                              <TouchableOpacity
-                                key={c.id}
-                                onPress={() => assignItemToChild(item.cartKey, c.id)}
-                                style={[
-                                  s.itemEaterChip,
-                                  {
-                                    backgroundColor: on ? theme.primary : theme.dark,
-                                    borderColor: on ? theme.primary : theme.border,
-                                  },
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    s.itemEaterChipText,
-                                    { color: on ? theme.textOnPrimary : theme.textPrimary },
-                                  ]}
-                                >
-                                  {c.studentName}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                        );
-                      })()}
-                    </View>
-                  </View>
-                  </View>
-                );
-              })}
-            </Card>
-
-            {children.length > 1 && !showAddChildForm ? (
-              <TouchableOpacity
-                onPress={() => setShowAddChildForm(true)}
-                style={s.addChildLink}
-              >
-                <Ionicons name="add-circle-outline" size={16} color={theme.primary} />
-                <Text style={[s.addChildLinkText, { color: theme.primary }]}>Add another child</Text>
-              </TouchableOpacity>
-            ) : null}
-
-            {/* Eater — collapsed by default for multi-child accounts
-                (the per-item "assign to eater" pills already cover
-                that case), but stays reachable via "+ Add another
-                child" below so a parent can add a new kid inline,
-                right from the cart, without a trip to Account. Always
-                shown for guests (0 saved children) since there's
-                nothing else to show them yet. */}
-            {(children.length <= 1 || showAddChildForm) && (
-            <Card style={s.card}>
-              <Eyebrow>Eater</Eyebrow>
-              {children.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
-                  {children.map((c) => {
-                    const on = selectedChildId === c.id;
-                    return (
-                      <TouchableOpacity
-                        key={c.id}
-                        onPress={() => {
-                          setSelectedChildId(c.id);
-                          setShowAddChildForm(false);
-                        }}
+                  const itemDate = deliveryDateById.get(item.deliveryDateId);
+                  const menuItem = itemDate?.menuItems.find((m) => m.id === item.menuItemId);
+                  const lineTotal = item.lineTotalCents * item.quantity;
+                  const mods = [
+                    item.size,
+                    item.choice,
+                    ...item.additions.map((a) => `+ ${a}`),
+                    ...item.removals.map((r) => `- ${r}`),
+                  ].filter(Boolean);
+                  const showSchoolHeader =
+                    isMultiSchool && (idx === 0 || sortedItems[idx - 1].schoolId !== item.schoolId);
+                  // Every item's assignable roster is filtered to people
+                  // at THIS item's own school -- a child can never be
+                  // offered as an option for a school they don't attend,
+                  // which is what makes a mixed-school cart safe by
+                  // construction rather than by a check that runs after
+                  // the fact.
+                  const eligiblePeople = roster.filter((p) => p.schoolId === item.schoolId);
+                  const assignedId = item.parentChildId;
+                  return (
+                    <View key={item.cartKey}>
+                      {showSchoolHeader ? (
+                        <Text style={[s.schoolGroupHeader, { color: theme.textMuted }]}>
+                          {itemDate?.school.name ?? "Unknown location"}
+                        </Text>
+                      ) : null}
+                      <View
                         style={[
-                          s.chip,
-                          {
-                            backgroundColor: on ? theme.primary : theme.dark,
-                            borderColor: on ? theme.primary : theme.border,
-                          },
+                          s.itemRow,
+                          idx < sortedItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border },
                         ]}
                       >
-                        <Text style={[s.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
-                          {c.studentName.trim().split(/\s+/)[0]}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedChildId(null);
-                      setShowAddChildForm(true);
-                    }}
-                    style={[
-                      s.chip,
-                      {
-                        backgroundColor: showAddChildForm ? theme.primary : theme.dark,
-                        borderColor: showAddChildForm ? theme.primary : theme.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        s.chipText,
-                        { color: showAddChildForm ? theme.textOnPrimary : theme.textPrimary },
-                      ]}
-                    >
-                      + New
-                    </Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              ) : null}
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: "row", gap: 12 }}>
+                            <FoodImage uri={menuItem?.imageUrl} seed={item.menuItemId} size={48} radius={11} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[s.itemName, { color: theme.textPrimary }]} numberOfLines={1}>
+                                {item.itemName}
+                              </Text>
+                              {mods.length > 0 ? (
+                                <Text style={[s.itemMods, { color: theme.textMuted }]} numberOfLines={2}>
+                                  {mods.join(" \u00b7 ")}
+                                </Text>
+                              ) : null}
+                              <Text style={[s.itemPrice, { color: theme.primary }]}>{formatPrice(lineTotal)}</Text>
+                            </View>
+                            <View style={[s.qty, { backgroundColor: theme.dark }]}>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                  decrementItem(item.cartKey);
+                                }}
+                                style={s.qtyBtn}
+                                hitSlop={6}
+                                accessibilityLabel={item.quantity > 1 ? "Decrease quantity" : "Remove item"}
+                              >
+                                <Ionicons
+                                  name={item.quantity > 1 ? "remove" : "trash-outline"}
+                                  size={16}
+                                  color={theme.textPrimary}
+                                />
+                              </TouchableOpacity>
+                              <Text style={[s.qtyValue, { color: theme.textPrimary }]}>{item.quantity}</Text>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                  incrementItem(item.cartKey);
+                                }}
+                                style={s.qtyBtn}
+                                hitSlop={6}
+                                accessibilityLabel="Increase quantity"
+                              >
+                                <Ionicons name="add" size={16} color={theme.textPrimary} />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
 
-              {selectedChild && !showAddChildForm ? (
-                <View style={[s.eaterCard, { backgroundColor: theme.dark }]}>
-                  <View style={[s.avatar, { backgroundColor: theme.primary }]}>
-                    <Text style={[s.avatarText, { color: theme.textOnPrimary }]}>
-                      {selectedChild.studentName.trim()[0]?.toUpperCase() ?? "?"}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.eaterName, { color: theme.textPrimary }]}>
-                      {isOffice
-                        ? selectedChild.studentName
-                        : `${selectedChild.studentName} · Grade ${selectedChild.grade}`}
-                    </Text>
-                    {selectedChild.allergyNotes ? (
-                      <View style={s.allergyRow}>
-                        <Ionicons name="warning-outline" size={13} color={theme.accent} />
-                        <Text style={[s.allergyText, { color: theme.accent }]}>
-                          {selectedChild.allergyNotes}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              ) : (
-                <View style={{ gap: 10 }}>
-                  <Labeled label="Eater's name">
-                    <TextInput
-                      style={s.input}
-                      value={studentName}
-                      onChangeText={setStudentName}
-                      placeholder="First Last"
-                      placeholderTextColor={theme.textMuted}
-                      autoCapitalize="words"
-                    />
-                  </Labeled>
-                   {isOffice ? null : (() => {
-                    const formSchoolId = addChildSchoolId ?? deliveryDate?.schoolId ?? null;
-                    const formSchool = allSchools.find((sc) => sc.id === formSchoolId);
-                    return (
-                    <>
-                      {allSchools.length > 1 ? (
-                        <Labeled label="School">
-                          <View style={s.itemEaterChips}>
-                            {allSchools.map((sc) => {
-                              const on = formSchoolId === sc.id;
-                              return (
-                                <TouchableOpacity
-                                  key={sc.id}
-                                  onPress={() => setAddChildSchoolId(sc.id)}
-                                  style={[
-                                    s.itemEaterChip,
-                                    {
-                                      backgroundColor: on ? theme.primary : theme.dark,
-                                      borderColor: on ? theme.primary : theme.border,
-                                    },
-                                  ]}
-                                >
-                                  <Text
+                          {/* Assign to -- always shown, always the same
+                              mechanism, for every item regardless of how
+                              many people are on the roster or whether
+                              this account has ever saved a child. */}
+                          <Labeled label="Assign to">
+                            <View style={s.itemEaterChips}>
+                              {eligiblePeople.map((p) => {
+                                const on = assignedId === p.id;
+                                return (
+                                  <TouchableOpacity
+                                    key={p.id}
+                                    onPress={() => assignItemToChild(item.cartKey, p.id)}
                                     style={[
-                                      s.itemEaterChipText,
-                                      { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                      s.itemEaterChip,
+                                      {
+                                        backgroundColor: on ? theme.primary : theme.dark,
+                                        borderColor: on ? theme.primary : theme.border,
+                                      },
                                     ]}
                                   >
-                                    {sc.name}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </Labeled>
-                      ) : formSchool ? (
-                        <Labeled label="School">
-                          <View style={[s.input, { justifyContent: "center" }]}>
-                            <Text style={{ color: theme.textPrimary, fontSize: 13 }}>{formSchool.name}</Text>
-                          </View>
-                        </Labeled>
-                      ) : null}
-                      <Labeled label="Grade">
-                        <View style={s.itemEaterChips}>
-                          {(formSchool?.grades?.length ? formSchool.grades : STANDARD_GRADES).map((g) => {
-                            const on = grade === g;
-                            return (
+                                    <Text
+                                      style={[
+                                        s.itemEaterChipText,
+                                        { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                      ]}
+                                    >
+                                      {p.studentName.trim().split(/\s+/)[0]}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
                               <TouchableOpacity
-                                key={g}
-                                onPress={() => setGrade(g)}
-                                style={[
-                                  s.itemEaterChip,
-                                  {
-                                    backgroundColor: on ? theme.primary : theme.dark,
-                                    borderColor: on ? theme.primary : theme.border,
-                                  },
-                                ]}
+                                onPress={() => openAddPersonModal(item.cartKey, item.schoolId)}
+                                style={[s.itemEaterChip, { backgroundColor: theme.dark, borderColor: theme.border }]}
                               >
-                                <Text
-                                  style={[
-                                    s.itemEaterChipText,
-                                    { color: on ? theme.textOnPrimary : theme.textPrimary },
-                                  ]}
-                                >
-                                  {g}
-                                </Text>
+                                <Text style={[s.itemEaterChipText, { color: theme.textPrimary }]}>+ Add a child</Text>
                               </TouchableOpacity>
-                            );
-                          })}
+                            </View>
+                          </Labeled>
                         </View>
-                      </Labeled>
-                    </>
-                    );
-                  })()}
-                  <Labeled label="Allergy notes (optional)">
-                    <TextInput
-                      style={s.input}
-                      value={allergyNotes}
-                      onChangeText={setAllergyNotes}
-                      placeholder="e.g. nut allergy"
-                      placeholderTextColor={theme.textMuted}
-                    />
-                  </Labeled>
-                  <PrimaryButton
-                    label={addChildMutation.isPending ? "Saving..." : "Save child"}
-                    onPress={() => {
-                      if (studentName.trim().length < 2) {
-                        Alert.alert("Name needed", "Enter the child's name (at least 2 characters).");
-                        return;
-                      }
-                      if (!isOffice && !grade.trim()) {
-                        Alert.alert("Grade needed", "Pick the child's grade.");
-                        return;
-                      }
-                      if (!isOffice && !(addChildSchoolId ?? deliveryDate?.schoolId)) {
-                        Alert.alert("School needed", "Pick which school this child attends.");
-                        return;
-                      }
-                      addChildMutation.mutate();
-                    }}
-                    disabled={addChildMutation.isPending}
-                  />
-                </View>
+                      </View>
+                    </View>
+                  );
+                },
               )}
             </Card>
-            )}
 
             {/* Parent / receipt */}
             <Card style={s.card}>
@@ -696,14 +491,130 @@ export default function CartScreen() {
                 {formatPrice(total)}
               </Text>
             </View>
-            <PrimaryButton
-              label={`Checkout — ${formatPrice(total)}`}
-              onPress={handleCheckout}
-              loading={submitting}
-            />
+            <PrimaryButton label={`Checkout \u2014 ${formatPrice(total)}`} onPress={handleCheckout} loading={submitting} />
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Add a child -- one shared modal, opened from any item's "+ Add a
+          child" chip. Adding here creates a draft only; they become a
+          real saved child at checkout, and only if used. */}
+      <Modal visible={addingForCartKey !== null} animationType="slide" transparent onRequestClose={closeAddPersonModal}>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalCard, { backgroundColor: theme.surface }]}>
+            <Text style={[s.modalTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+              Add a child
+            </Text>
+            <View style={{ gap: 10 }}>
+              <Labeled label="Name">
+                <TextInput
+                  style={s.input}
+                  value={modalName}
+                  onChangeText={setModalName}
+                  placeholder="First Last"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="words"
+                  autoFocus
+                />
+              </Labeled>
+              {!isOffice &&
+                (() => {
+                  const modalSchool = allSchools.find((sc) => sc.id === modalSchoolId);
+                  return (
+                    <>
+                      {allSchools.length > 1 ? (
+                        <Labeled label="School">
+                          <View style={s.itemEaterChips}>
+                            {allSchools.map((sc) => {
+                              const on = modalSchoolId === sc.id;
+                              return (
+                                <TouchableOpacity
+                                  key={sc.id}
+                                  onPress={() => setModalSchoolId(sc.id)}
+                                  style={[
+                                    s.itemEaterChip,
+                                    {
+                                      backgroundColor: on ? theme.primary : theme.dark,
+                                      borderColor: on ? theme.primary : theme.border,
+                                    },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      s.itemEaterChipText,
+                                      { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                    ]}
+                                  >
+                                    {sc.name}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </Labeled>
+                      ) : modalSchool ? (
+                        <Labeled label="School">
+                          <View style={[s.input, { justifyContent: "center" }]}>
+                            <Text style={{ color: theme.textPrimary, fontSize: 13 }}>{modalSchool.name}</Text>
+                          </View>
+                        </Labeled>
+                      ) : null}
+                      <Labeled label="Grade">
+                        <View style={s.itemEaterChips}>
+                          {(modalSchool?.grades?.length ? modalSchool.grades : STANDARD_GRADES).map((g) => {
+                            const on = modalGrade === g;
+                            return (
+                              <TouchableOpacity
+                                key={g}
+                                onPress={() => setModalGrade(g)}
+                                style={[
+                                  s.itemEaterChip,
+                                  {
+                                    backgroundColor: on ? theme.primary : theme.dark,
+                                    borderColor: on ? theme.primary : theme.border,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    s.itemEaterChipText,
+                                    { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                  ]}
+                                >
+                                  {g}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </Labeled>
+                    </>
+                  );
+                })()}
+              <Labeled label="Allergy notes (optional)">
+                <TextInput
+                  style={s.input}
+                  value={modalAllergy}
+                  onChangeText={setModalAllergy}
+                  placeholder="e.g. nut allergy"
+                  placeholderTextColor={theme.textMuted}
+                />
+              </Labeled>
+            </View>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={closeAddPersonModal}
+                style={[s.modalCancelBtn, { borderColor: theme.border }]}
+              >
+                <Text style={{ color: theme.textPrimary, fontWeight: "600" }}>Cancel</Text>
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <PrimaryButton label="Add" onPress={submitAddPersonModal} />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -737,26 +648,20 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     itemName: { fontSize: 14, fontWeight: "700" },
     itemMods: { fontSize: 12, marginTop: 1 },
     itemPrice: { fontSize: 13, fontWeight: "700", marginTop: 3 },
-    schoolGroupHeader: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4, paddingTop: 12, paddingBottom: 4 },
+    schoolGroupHeader: {
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      paddingTop: 12,
+      paddingBottom: 4,
+    },
     itemEaterChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
-    addChildLink: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 10 },
-    addChildLinkText: { fontSize: 13, fontWeight: "600" },
     itemEaterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1.5 },
     itemEaterChipText: { fontSize: 11.5, fontWeight: "600" },
     qty: { flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 4, gap: 3 },
     qtyBtn: { width: 26, height: 26, borderRadius: 7, alignItems: "center", justifyContent: "center" },
     qtyValue: { minWidth: 20, textAlign: "center", fontSize: 14, fontWeight: "700" },
-
-    chipRow: { flexDirection: "row", gap: 8, paddingVertical: 2 },
-    chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, borderWidth: 1.5 },
-    chipText: { fontSize: 13, fontWeight: "600" },
-
-    eaterCard: { flexDirection: "row", alignItems: "center", gap: 11, borderRadius: 12, padding: 11 },
-    avatar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
-    avatarText: { fontSize: 16, fontWeight: "700", fontFamily: theme.fontDisplay },
-    eaterName: { fontSize: 14, fontWeight: "700" },
-    allergyRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 },
-    allergyText: { fontSize: 11.5, fontWeight: "700" },
 
     input: {
       backgroundColor: theme.dark,
@@ -778,4 +683,16 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     totalLabel: { fontSize: 15, fontWeight: "600" },
     totalAmount: { fontSize: 22, fontWeight: "600" },
+
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+    modalCard: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 32 },
+    modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 16 },
+    modalCancelBtn: {
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      alignItems: "center",
+      justifyContent: "center",
+    },
   });
