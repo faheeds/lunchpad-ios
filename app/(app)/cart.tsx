@@ -163,8 +163,22 @@ export default function CartScreen() {
       grade: modalGrade.trim(),
       allergyNotes: modalAllergy.trim() || undefined,
     });
-    if (addingForCartKey) {
+    // Only assign the new person to the triggering line if their school
+    // actually matches it -- same reasoning as the ordering screen's own
+    // add-child form: assigning a mismatched school here would just get
+    // rejected at checkout, so instead they're saved to the roster
+    // (available for a matching item) without silently mis-assigning
+    // this one.
+    const matchesThisLine =
+      addingForCartKey &&
+      items.find((i) => i.cartKey === addingForCartKey)?.schoolId === (modalSchoolId ?? deliveryDate?.schoolId);
+    if (matchesThisLine && addingForCartKey) {
       assignItemToChild(addingForCartKey, newId);
+    } else if (addingForCartKey) {
+      Alert.alert(
+        "Added to your family",
+        `${modalName.trim()} attends a different school than this item, so they're saved but not assigned here.`,
+      );
     }
     closeAddPersonModal();
   }
@@ -333,7 +347,7 @@ export default function CartScreen() {
                   // which is what makes a mixed-school cart safe by
                   // construction rather than by a check that runs after
                   // the fact.
-                  const eligiblePeople = roster.filter((p) => p.schoolId === item.schoolId);
+                  const eligiblePeople = roster; // shown in full below -- wrong-school people are disabled, never hidden
                   const assignedId = item.parentChildId;
                   const assignedPerson = roster.find((p) => p.id === assignedId);
                   const isReassigning = reassigningCartKey === item.cartKey;
@@ -419,19 +433,23 @@ export default function CartScreen() {
                             <View style={s.itemEaterChips}>
                               {eligiblePeople.map((p) => {
                                 const on = assignedId === p.id;
+                                const wrongSchool = p.schoolId !== item.schoolId;
                                 return (
                                   <TouchableOpacity
                                     key={p.id}
+                                    disabled={wrongSchool}
                                     onPress={() => {
                                       assignItemToChild(item.cartKey, p.id);
                                       setReassigningCartKey(null);
                                     }}
                                     style={[
                                       s.itemEaterChip,
-                                      {
-                                        backgroundColor: on ? theme.primary : theme.dark,
-                                        borderColor: on ? theme.primary : theme.border,
-                                      },
+                                      wrongSchool
+                                        ? { backgroundColor: theme.dark, borderColor: theme.border, opacity: 0.4 }
+                                        : {
+                                            backgroundColor: on ? theme.primary : theme.dark,
+                                            borderColor: on ? theme.primary : theme.border,
+                                          },
                                     ]}
                                   >
                                     <Text
@@ -441,6 +459,7 @@ export default function CartScreen() {
                                       ]}
                                     >
                                       {p.studentName.trim().split(/\s+/)[0]}
+                                      {wrongSchool ? " (different school)" : ""}
                                     </Text>
                                   </TouchableOpacity>
                                 );

@@ -17,6 +17,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   TextInput,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -110,24 +111,41 @@ function ItemModal({
   const drafts = useCart((st) => st.drafts);
   const addDraftChild = useCart((st) => st.addDraftChild);
 
-  // Reuses the same React Query cache key the cart and account screens
-  // already populate -- this doesn't trigger a second network request
-  // once that data has loaded, just reads the shared cache.
+  // Reuses the same React Query cache keys the cart, account, and this
+  // screen's own parent component already populate -- these don't
+  // trigger extra network requests once that data has loaded, just read
+  // the shared cache.
   const { data: account } = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
+  const { data: allDatesForSchools } = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
   const isOffice = deliveryDate.school.locationType === "OFFICE";
 
-  // Who's this for -- saved children plus anyone added as a draft this
-  // session, filtered to people who actually attend THIS delivery date's
-  // school. A child can never be offered as an option for a school they
-  // don't attend, matching the same safety rule the cart's assignment
-  // already relies on.
+  // Every distinct school available to this restaurant -- used by the
+  // "add a child" form's school picker so a brand-new person can be
+  // added for ANY school the restaurant serves, not just whichever
+  // school this particular item happens to belong to.
+  const allSchools = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; grades?: string[] }>();
+    (allDatesForSchools ?? []).forEach((d) => map.set(d.school.id, d.school));
+    return [...map.values()];
+  }, [allDatesForSchools]);
+
+  // Who's this for -- EVERY saved child plus every draft added this
+  // session, never filtered out of the list entirely. A child whose own
+  // school doesn't match this item's school is still shown (so a saved
+  // child can never silently seem to not exist -- confirmed as a real,
+  // repeated point of confusion), just visually marked and disabled;
+  // picking them is prevented here for clarity, but the backend's own
+  // validation (createAdHocCheckoutBatch) is the actual safety net
+  // regardless, exactly like it already is for every other assignment
+  // path in the app.
   const roster = useMemo(
-    () => [...(account?.children ?? []), ...drafts].filter((p) => p.schoolId === deliveryDate.schoolId),
-    [account, drafts, deliveryDate.schoolId],
+    () => [...(account?.children ?? []), ...drafts],
+    [account, drafts],
   );
   const [assignedPersonId, setAssignedPersonId] = useState<string | null>(null);
   const [showAddPersonForm, setShowAddPersonForm] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonSchoolId, setNewPersonSchoolId] = useState<string | null>(null);
   const [newPersonGrade, setNewPersonGrade] = useState("");
   const [newPersonAllergy, setNewPersonAllergy] = useState("");
 
@@ -171,19 +189,34 @@ function ItemModal({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
+    const chosenSchoolId = newPersonSchoolId ?? deliveryDate.schoolId;
     if (!isOffice && !newPersonGrade.trim()) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
     const newId = addDraftChild({
       studentName: newPersonName.trim(),
-      schoolId: deliveryDate.schoolId,
+      schoolId: chosenSchoolId,
       grade: newPersonGrade.trim(),
       allergyNotes: newPersonAllergy.trim() || undefined,
     });
-    setAssignedPersonId(newId);
+    // Only auto-assign the new person to THIS item if their school
+    // actually matches it -- if the user deliberately picked a
+    // different school (they're adding a child for later, not for this
+    // specific item), assigning them here would just get rejected at
+    // checkout. They're still added to the roster either way, ready to
+    // use on an item from their own school.
+    if (chosenSchoolId === deliveryDate.schoolId) {
+      setAssignedPersonId(newId);
+    } else {
+      Alert.alert(
+        "Added to your family",
+        `${newPersonName.trim()} attends a different school than this item, so they're saved but not assigned here. Pick them from an item on their own school's menu.`,
+      );
+    }
     setShowAddPersonForm(false);
     setNewPersonName("");
+    setNewPersonSchoolId(null);
     setNewPersonGrade("");
     setNewPersonAllergy("");
   }
@@ -249,9 +282,11 @@ function ItemModal({
             <View style={m.chipGrid}>
               {roster.map((p) => {
                 const on = assignedPersonId === p.id;
+                const wrongSchool = p.schoolId !== deliveryDate.schoolId;
                 return (
                   <TouchableOpacity
                     key={p.id}
+                    disabled={wrongSchool}
                     onPress={() => {
                       setAssignedPersonId(p.id);
                       setShowAddPersonForm(false);
@@ -259,16 +294,19 @@ function ItemModal({
                     }}
                     style={[
                       m.chip,
-                      {
-                        backgroundColor: on ? theme.primary : theme.surface,
-                        borderColor: on ? theme.primary : theme.border,
-                      },
+                      wrongSchool
+                        ? { backgroundColor: theme.surface, borderColor: theme.border, opacity: 0.4 }
+                        : {
+                            backgroundColor: on ? theme.primary : theme.surface,
+                            borderColor: on ? theme.primary : theme.border,
+                          },
                     ]}
                     accessibilityRole="radio"
-                    accessibilityState={{ checked: on }}
+                    accessibilityState={{ checked: on, disabled: wrongSchool }}
                   >
                     <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
                       {p.studentName.trim().split(/\s+/)[0]}
+                      {wrongSchool ? " (different school)" : ""}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -304,32 +342,63 @@ function ItemModal({
                   placeholderTextColor={theme.textMuted}
                   autoCapitalize="words"
                 />
-                {!isOffice ? (
-                  <View style={m.chipGrid}>
-                    {(deliveryDate.school.grades?.length ? deliveryDate.school.grades : STANDARD_GRADES).map(
-                      (g) => {
-                        const on = newPersonGrade === g;
-                        return (
-                          <TouchableOpacity
-                            key={g}
-                            onPress={() => setNewPersonGrade(g)}
-                            style={[
-                              m.chip,
-                              {
-                                backgroundColor: on ? theme.primary : theme.surface,
-                                borderColor: on ? theme.primary : theme.border,
-                              },
-                            ]}
-                          >
-                            <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
-                              {g}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      },
-                    )}
-                  </View>
-                ) : null}
+                {!isOffice ? (() => {
+                  const chosenSchoolId = newPersonSchoolId ?? deliveryDate.schoolId;
+                  const chosenSchool = allSchools.find((sc) => sc.id === chosenSchoolId);
+                  return (
+                    <>
+                      {allSchools.length > 1 ? (
+                        <View style={m.chipGrid}>
+                          {allSchools.map((sc) => {
+                            const on = chosenSchoolId === sc.id;
+                            return (
+                              <TouchableOpacity
+                                key={sc.id}
+                                onPress={() => {
+                                  setNewPersonSchoolId(sc.id);
+                                  setNewPersonGrade(""); // grades differ per school -- don't carry over a stale pick
+                                }}
+                                style={[
+                                  m.chip,
+                                  {
+                                    backgroundColor: on ? theme.primary : theme.surface,
+                                    borderColor: on ? theme.primary : theme.border,
+                                  },
+                                ]}
+                              >
+                                <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                                  {sc.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                      <View style={m.chipGrid}>
+                        {(chosenSchool?.grades?.length ? chosenSchool.grades : STANDARD_GRADES).map((g) => {
+                          const on = newPersonGrade === g;
+                          return (
+                            <TouchableOpacity
+                              key={g}
+                              onPress={() => setNewPersonGrade(g)}
+                              style={[
+                                m.chip,
+                                {
+                                  backgroundColor: on ? theme.primary : theme.surface,
+                                  borderColor: on ? theme.primary : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                                {g}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  );
+                })() : null}
                 <TextInput
                   style={[
                     m.textInput,
