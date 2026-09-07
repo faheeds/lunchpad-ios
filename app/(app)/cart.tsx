@@ -371,7 +371,11 @@ export default function CartScreen() {
               })}
             </Card>
 
-            {/* Eater */}
+            {/* Eater — only shown for guests/single-child accounts, who
+                have no per-item picker to use instead. For multi-child
+                accounts, the per-item "assign to eater" pills already
+                cover this; showing both was redundant and confusing. */}
+            {children.length <= 1 && (
             <Card style={s.card}>
               <Eyebrow>Eater</Eyebrow>
               {children.length > 0 ? (
@@ -476,6 +480,7 @@ export default function CartScreen() {
                 </View>
               )}
             </Card>
+            )}
 
             {/* Parent / receipt */}
             <Card style={s.card}>
