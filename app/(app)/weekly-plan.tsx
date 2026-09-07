@@ -803,7 +803,7 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     fill: { height: 6, borderRadius: 99 },
     progressText: { fontSize: 12, marginTop: 6 },
 
-    chipRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
+    chipRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
     chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
     chipText: { fontSize: 13, fontWeight: "600" },
 
