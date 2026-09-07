@@ -122,6 +122,11 @@ export default function CartScreen() {
 
   // Which item's "+ Add a child" modal is open, if any. Null = closed.
   const [addingForCartKey, setAddingForCartKey] = useState<string | null>(null);
+  // Which line's compact "reassign" row is expanded, if any. Assignment
+  // now happens once, up front, on the ordering screen -- this is only
+  // for correcting a mistake afterward, so at most one line's reassign
+  // row is open at a time, and it starts closed for every line.
+  const [reassigningCartKey, setReassigningCartKey] = useState<string | null>(null);
   const [modalName, setModalName] = useState("");
   const [modalSchoolId, setModalSchoolId] = useState<string | null>(null);
   const [modalGrade, setModalGrade] = useState("");
@@ -330,6 +335,8 @@ export default function CartScreen() {
                   // the fact.
                   const eligiblePeople = roster.filter((p) => p.schoolId === item.schoolId);
                   const assignedId = item.parentChildId;
+                  const assignedPerson = roster.find((p) => p.id === assignedId);
+                  const isReassigning = reassigningCartKey === item.cartKey;
                   return (
                     <View key={item.cartKey}>
                       {showSchoolHeader ? (
@@ -388,18 +395,37 @@ export default function CartScreen() {
                             </View>
                           </View>
 
-                          {/* Assign to -- always shown, always the same
-                              mechanism, for every item regardless of how
-                              many people are on the roster or whether
-                              this account has ever saved a child. */}
-                          <Labeled label="Assign to">
+                          {/* Who this line is for -- decided once, up
+                              front, on the ordering screen. Shown here as
+                              a simple fact, tappable to correct a mistake
+                              via a small reassign row rather than an
+                              always-open picker on every line. */}
+                          <TouchableOpacity
+                            onPress={() => setReassigningCartKey(isReassigning ? null : item.cartKey)}
+                            style={s.forRow}
+                          >
+                            <Ionicons name="person-outline" size={13} color={theme.textMuted} />
+                            <Text style={[s.forText, { color: theme.textSecondary }]}>
+                              For {assignedPerson?.studentName.trim().split(/\s+/)[0] ?? "someone no longer on your roster"}
+                            </Text>
+                            <Ionicons
+                              name={isReassigning ? "chevron-up" : "chevron-down"}
+                              size={13}
+                              color={theme.textMuted}
+                            />
+                          </TouchableOpacity>
+
+                          {isReassigning ? (
                             <View style={s.itemEaterChips}>
                               {eligiblePeople.map((p) => {
                                 const on = assignedId === p.id;
                                 return (
                                   <TouchableOpacity
                                     key={p.id}
-                                    onPress={() => assignItemToChild(item.cartKey, p.id)}
+                                    onPress={() => {
+                                      assignItemToChild(item.cartKey, p.id);
+                                      setReassigningCartKey(null);
+                                    }}
                                     style={[
                                       s.itemEaterChip,
                                       {
@@ -420,13 +446,16 @@ export default function CartScreen() {
                                 );
                               })}
                               <TouchableOpacity
-                                onPress={() => openAddPersonModal(item.cartKey, item.schoolId)}
+                                onPress={() => {
+                                  setReassigningCartKey(null);
+                                  openAddPersonModal(item.cartKey, item.schoolId);
+                                }}
                                 style={[s.itemEaterChip, { backgroundColor: theme.dark, borderColor: theme.border }]}
                               >
                                 <Text style={[s.itemEaterChipText, { color: theme.textPrimary }]}>+ Add a child</Text>
                               </TouchableOpacity>
                             </View>
-                          </Labeled>
+                          ) : null}
                         </View>
                       </View>
                     </View>
@@ -657,6 +686,8 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
       paddingBottom: 4,
     },
     itemEaterChips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+    forRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 8 },
+    forText: { fontSize: 12, fontWeight: "600" },
     itemEaterChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: 1.5 },
     itemEaterChipText: { fontSize: 11.5, fontWeight: "600" },
     qty: { flexDirection: "row", alignItems: "center", borderRadius: 10, padding: 4, gap: 3 },

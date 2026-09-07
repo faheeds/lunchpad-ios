@@ -100,12 +100,13 @@ export type CartItem = {
   lineTotalCents: number;
   /** Number of identical units of this configuration. Always ≥ 1. */
   quantity: number;
-  /** Which saved child this line is for. Undefined = not yet assigned
-   *  (falls back to whichever single eater is selected for the whole
-   *  cart, preserving today's behavior for guests and single-child
-   *  accounts). Only meaningful once assigned — see cart.tsx's
-   *  assignItemToChild usage for how this gets set. */
-  parentChildId?: string;
+  /** Which person (real saved child or draft) this line is for. Always
+   *  set at the moment the line is created — the ordering screen requires
+   *  picking someone before "Add to cart" is enabled, so this is never
+   *  undefined for a real cart line. Reassignable afterward (cart.tsx),
+   *  which changes just this one line via the store's
+   *  assignItemToChild. */
+  parentChildId: string;
   /** Which delivery date (and therefore which school) this line was
    *  added from. Required, not optional — every line always belongs to
    *  a specific date/school, even in a single-school cart. This is what
@@ -124,6 +125,19 @@ export type CartItem = {
  *  into one — without this, ordering the same menu item for a Bellevue
  *  child and a Redmond child on the same day would collide into a single
  *  cart line with the wrong combined quantity and only one school. */
+/** Build a deterministic key from a cart-item configuration. Same options
+ *  in a different order still hash to the same key so we don't end up
+ *  with sibling lines that should be one. Includes both `size` and
+ *  `choice` so Beef-Medium and Beef-Large are separate cart lines.
+ *  Includes deliveryDateId so the exact same item added from two
+ *  different schools' menus stays two separate lines rather than
+ *  colliding into one with the wrong combined quantity and only one
+ *  school. Includes parentChildId so the exact same item, same
+ *  customizations, same date, added for two DIFFERENT people stays two
+ *  separate lines too -- without this, "Classic Cheeseburger for Hana"
+ *  and "Classic Cheeseburger for Hiba" would collide into one line with
+ *  a combined quantity and only one of them actually assigned, which is
+ *  exactly the real bug this key change exists to prevent. */
 export function buildCartKey(
   menuItemId: string,
   size: string | undefined,
@@ -131,10 +145,11 @@ export function buildCartKey(
   additions: string[],
   removals: string[],
   deliveryDateId: string,
+  parentChildId: string,
 ): string {
   const a = [...additions].sort().join("|");
   const r = [...removals].sort().join("|");
-  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}::${deliveryDateId}`;
+  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}::${deliveryDateId}::${parentChildId}`;
 }
 
 export type Child = {

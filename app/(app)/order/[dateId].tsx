@@ -16,15 +16,17 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { fetchDeliveryDates } from "../../../lib/api";
+import { fetchDeliveryDates, fetchAccount } from "../../../lib/api";
 import { useCart, formatPrice } from "../../../lib/store";
 import { computeLineTotalCents } from "../../../lib/pricing";
 import { groupItemsByCategory } from "../../../lib/groupByCategory";
+import { STANDARD_GRADES } from "../../../lib/grades";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
 import { useTheme } from "../../../lib/theme";
 import { FoodImage } from "../../../components/FoodImage";
@@ -105,6 +107,29 @@ function ItemModal({
   const m = modalStyles(theme);
   const addItem = useCart((st) => st.addItem);
   const inCart = useCart((st) => st.items.some((i) => i.menuItemId === item.id));
+  const drafts = useCart((st) => st.drafts);
+  const addDraftChild = useCart((st) => st.addDraftChild);
+
+  // Reuses the same React Query cache key the cart and account screens
+  // already populate -- this doesn't trigger a second network request
+  // once that data has loaded, just reads the shared cache.
+  const { data: account } = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
+  const isOffice = deliveryDate.school.locationType === "OFFICE";
+
+  // Who's this for -- saved children plus anyone added as a draft this
+  // session, filtered to people who actually attend THIS delivery date's
+  // school. A child can never be offered as an option for a school they
+  // don't attend, matching the same safety rule the cart's assignment
+  // already relies on.
+  const roster = useMemo(
+    () => [...(account?.children ?? []), ...drafts].filter((p) => p.schoolId === deliveryDate.schoolId),
+    [account, drafts, deliveryDate.schoolId],
+  );
+  const [assignedPersonId, setAssignedPersonId] = useState<string | null>(null);
+  const [showAddPersonForm, setShowAddPersonForm] = useState(false);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonGrade, setNewPersonGrade] = useState("");
+  const [newPersonAllergy, setNewPersonAllergy] = useState("");
 
   const sizes = item.sizes ?? [];
   const requiredChoices = item.requiredChoices ?? [];
@@ -130,13 +155,37 @@ function ItemModal({
     additions: selectedAdditions,
   });
   const canAdd =
-    (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
+    (!hasRequiredChoice || selectedChoice !== null) &&
+    (!hasSize || selectedSize !== null) &&
+    assignedPersonId !== null;
 
   function toggleAddition(name: string) {
     setSelectedAdditions((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
   }
   function toggleRemoval(name: string) {
     setSelectedRemovals((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
+  }
+
+  function submitAddPersonForm() {
+    if (newPersonName.trim().length < 2) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+    if (!isOffice && !newPersonGrade.trim()) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+    const newId = addDraftChild({
+      studentName: newPersonName.trim(),
+      schoolId: deliveryDate.schoolId,
+      grade: newPersonGrade.trim(),
+      allergyNotes: newPersonAllergy.trim() || undefined,
+    });
+    setAssignedPersonId(newId);
+    setShowAddPersonForm(false);
+    setNewPersonName("");
+    setNewPersonGrade("");
+    setNewPersonAllergy("");
   }
 
   function handleAdd() {
@@ -155,6 +204,7 @@ function ItemModal({
         additions: selectedAdditions,
         removals: selectedRemovals,
         lineTotalCents: total,
+        parentChildId: assignedPersonId!, // canAdd guarantees this is set
       },
       deliveryDate.id,
       deliveryDate.schoolId,
@@ -191,6 +241,114 @@ function ItemModal({
           {item.description ? (
             <Text style={[m.description, { color: theme.textSecondary }]}>{item.description}</Text>
           ) : null}
+
+          <View style={m.section}>
+            <Text style={[m.sectionTitle, { color: theme.textMuted }]}>
+              WHO'S THIS FOR <Text style={{ color: theme.accent }}>· required</Text>
+            </Text>
+            <View style={m.chipGrid}>
+              {roster.map((p) => {
+                const on = assignedPersonId === p.id;
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => {
+                      setAssignedPersonId(p.id);
+                      setShowAddPersonForm(false);
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                    style={[
+                      m.chip,
+                      {
+                        backgroundColor: on ? theme.primary : theme.surface,
+                        borderColor: on ? theme.primary : theme.border,
+                      },
+                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                  >
+                    <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                      {p.studentName.trim().split(/\s+/)[0]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                onPress={() => setShowAddPersonForm((v) => !v)}
+                style={[
+                  m.chip,
+                  {
+                    backgroundColor: showAddPersonForm ? theme.primary : theme.surface,
+                    borderColor: showAddPersonForm ? theme.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[m.chipText, { color: showAddPersonForm ? theme.textOnPrimary : theme.textPrimary }]}
+                >
+                  + Add a child
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {showAddPersonForm ? (
+              <View style={{ gap: 8, marginTop: 10 }}>
+                <TextInput
+                  style={[
+                    m.textInput,
+                    { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.surface },
+                  ]}
+                  value={newPersonName}
+                  onChangeText={setNewPersonName}
+                  placeholder="Their name"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="words"
+                />
+                {!isOffice ? (
+                  <View style={m.chipGrid}>
+                    {(deliveryDate.school.grades?.length ? deliveryDate.school.grades : STANDARD_GRADES).map(
+                      (g) => {
+                        const on = newPersonGrade === g;
+                        return (
+                          <TouchableOpacity
+                            key={g}
+                            onPress={() => setNewPersonGrade(g)}
+                            style={[
+                              m.chip,
+                              {
+                                backgroundColor: on ? theme.primary : theme.surface,
+                                borderColor: on ? theme.primary : theme.border,
+                              },
+                            ]}
+                          >
+                            <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                              {g}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      },
+                    )}
+                  </View>
+                ) : null}
+                <TextInput
+                  style={[
+                    m.textInput,
+                    { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.surface },
+                  ]}
+                  value={newPersonAllergy}
+                  onChangeText={setNewPersonAllergy}
+                  placeholder="Allergy notes (optional)"
+                  placeholderTextColor={theme.textMuted}
+                />
+                <TouchableOpacity
+                  onPress={submitAddPersonForm}
+                  style={[m.addPersonBtn, { backgroundColor: theme.primary }]}
+                >
+                  <Text style={{ color: theme.textOnPrimary, fontWeight: "700" }}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
 
           {hasSize ? (
             <View style={m.section}>
@@ -529,6 +687,19 @@ const modalStyles = (theme: ReturnType<typeof useTheme>) =>
     },
     chipText: { fontSize: 14, fontWeight: "600" },
     chipPrice: { fontSize: 12, fontWeight: "500" },
+    textInput: {
+      borderWidth: 1.5,
+      borderRadius: 11,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      fontSize: 14,
+    },
+    addPersonBtn: {
+      paddingVertical: 12,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     optRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
     checkbox: {
       width: 22,
