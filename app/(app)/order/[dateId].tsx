@@ -4,11 +4,12 @@
  * A floating cart bar carries the running total to checkout.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
   FlatList,
+  SectionList,
   TouchableOpacity,
   StyleSheet,
   Modal,
@@ -23,6 +24,7 @@ import * as Haptics from "expo-haptics";
 import { fetchDeliveryDates } from "../../../lib/api";
 import { useCart, formatPrice } from "../../../lib/store";
 import { computeLineTotalCents } from "../../../lib/pricing";
+import { groupItemsByCategory } from "../../../lib/groupByCategory";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
 import { useTheme } from "../../../lib/theme";
 import { FoodImage } from "../../../components/FoodImage";
@@ -358,6 +360,13 @@ export default function OrderScreen() {
   });
   const deliveryDate = allDates?.find((d) => d.id === dateId);
 
+  // Group items by category, preserving the order they arrive in — the
+  // server already sorts menuItems by the restaurant's configured
+  // category order (falling back to alphabetical), so grouping via a Map
+  // (which preserves insertion order) naturally produces sections in the
+  // correct sequence without the client needing to re-sort anything.
+  const sections = useMemo(() => groupItemsByCategory(deliveryDate?.menuItems ?? []), [deliveryDate]);
+
   useEffect(() => {
     if (preselectHandled.current) return;
     if (preselectedItemId && deliveryDate) {
@@ -390,11 +399,20 @@ export default function OrderScreen() {
           onBack={() => router.back()}
           safeArea={false}
         />
-        <FlatList
-          data={deliveryDate.menuItems}
+        <SectionList
+          sections={sections}
           keyExtractor={(i) => i.id}
           contentContainerStyle={s.list}
           showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <View style={s.sectionHead}>
+              <Text style={[s.sectionTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+                {section.title}
+              </Text>
+              <Text style={[s.sectionCount, { color: theme.textMuted }]}>{section.data.length}</Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <MenuItemCard
               item={item}
@@ -445,6 +463,9 @@ const screenStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     center: { flex: 1, alignItems: "center", justifyContent: "center" },
     list: { paddingHorizontal: 16, paddingBottom: 96, gap: 9 },
+    sectionHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingTop: 10, paddingBottom: 2 },
+    sectionTitle: { fontSize: 18, fontWeight: "600", letterSpacing: -0.3 },
+    sectionCount: { fontSize: 12, fontWeight: "700" },
     cartBarWrap: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingBottom: 10 },
     cartBar: {
       borderRadius: 15,
