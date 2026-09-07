@@ -28,6 +28,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice } from "../../lib/store";
 import { fetchAccount, fetchDeliveryDates, createOrder, createCartCheckout } from "../../lib/api";
 import { useTheme } from "../../lib/theme";
+import { STANDARD_GRADES } from "../../lib/grades";
 import { effectiveChildIdFor } from "../../lib/effectiveChild";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, ScreenHeader, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
@@ -458,15 +459,49 @@ export default function CartScreen() {
                     />
                   </Labeled>
                    {isOffice ? null : (
-                    <Labeled label="Grade or group">
-                      <TextInput
-                        style={s.input}
-                        value={grade}
-                        onChangeText={setGrade}
-                        placeholder="e.g. 3rd, or a team name"
-                        placeholderTextColor={theme.textMuted}
-                      />
-                    </Labeled>
+                    <>
+                      {deliveryDate ? (
+                        <Labeled label="School">
+                          <View style={[s.input, { justifyContent: "center" }]}>
+                            <Text style={{ color: theme.textPrimary, fontSize: 13 }}>
+                              {deliveryDate.school.name}
+                            </Text>
+                          </View>
+                        </Labeled>
+                      ) : null}
+                      <Labeled label="Grade">
+                        <View style={s.itemEaterChips}>
+                          {(deliveryDate?.school.grades?.length
+                            ? deliveryDate.school.grades
+                            : STANDARD_GRADES
+                          ).map((g) => {
+                            const on = grade === g;
+                            return (
+                              <TouchableOpacity
+                                key={g}
+                                onPress={() => setGrade(g)}
+                                style={[
+                                  s.itemEaterChip,
+                                  {
+                                    backgroundColor: on ? theme.primary : theme.dark,
+                                    borderColor: on ? theme.primary : theme.border,
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    s.itemEaterChipText,
+                                    { color: on ? theme.textOnPrimary : theme.textPrimary },
+                                  ]}
+                                >
+                                  {g}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </Labeled>
+                    </>
                   )}
                   <Labeled label="Allergy notes (optional)">
                     <TextInput
