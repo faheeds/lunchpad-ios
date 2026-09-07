@@ -28,6 +28,7 @@ import { useCart, formatPrice } from "../../../lib/store";
 import { computeLineTotalCents } from "../../../lib/pricing";
 import { groupItemsByCategory } from "../../../lib/groupByCategory";
 import { STANDARD_GRADES } from "../../../lib/grades";
+import { resolveDateForPerson, buildSameDayDatesBySchool } from "../../../lib/resolvePersonDate";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
 import { useTheme } from "../../../lib/theme";
 import { FoodImage } from "../../../components/FoodImage";
@@ -129,20 +130,38 @@ function ItemModal({
     return [...map.values()];
   }, [allDatesForSchools]);
 
+  // Many restaurants run the same menu across every school they serve --
+  // confirmed directly: this same menu item is genuinely available on
+  // both Redmond's and Bellevue's delivery dates for the same calendar
+  // day. So "who's this for" isn't actually limited to one school --
+  // it's limited to whichever schools ALSO have a delivery date for this
+  // exact same day with this SAME item available.
+  const sameDayDatesBySchool = useMemo(
+    () => buildSameDayDatesBySchool(allDatesForSchools ?? [], deliveryDate.deliveryDate),
+    [allDatesForSchools, deliveryDate.deliveryDate],
+  );
+
+  /** Resolves which delivery date to actually use for a given person's
+   *  cart line: THEIR OWN school's date for this same day, if that
+   *  school has one and this item is available there -- never just the
+   *  date the customer happened to be browsing. Returns null if this
+   *  person's school genuinely can't get this item today. */
+  function resolveForPerson(schoolId: string) {
+    return resolveDateForPerson(schoolId, item.id, sameDayDatesBySchool);
+  }
+
   // Who's this for -- EVERY saved child plus every draft added this
-  // session, never filtered out of the list entirely. A child whose own
-  // school doesn't match this item's school is still shown (so a saved
-  // child can never silently seem to not exist -- confirmed as a real,
-  // repeated point of confusion), just visually marked and disabled;
-  // picking them is prevented here for clarity, but the backend's own
-  // validation (createAdHocCheckoutBatch) is the actual safety net
-  // regardless, exactly like it already is for every other assignment
-  // path in the app.
+  // session, never filtered out of the list entirely. Multi-select: one
+  // customization (choice/add-ons) can apply to several kids at once,
+  // each landing on THEIR OWN school's version of this same item.
+  // A child whose school can't actually get this item today is still
+  // shown (so a saved child never silently seems to not exist), just
+  // disabled with a clear reason.
   const roster = useMemo(
     () => [...(account?.children ?? []), ...drafts],
     [account, drafts],
   );
-  const [assignedPersonId, setAssignedPersonId] = useState<string | null>(null);
+  const [assignedPersonIds, setAssignedPersonIds] = useState<string[]>([]);
   const [showAddPersonForm, setShowAddPersonForm] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonSchoolId, setNewPersonSchoolId] = useState<string | null>(null);
@@ -175,13 +194,19 @@ function ItemModal({
   const canAdd =
     (!hasRequiredChoice || selectedChoice !== null) &&
     (!hasSize || selectedSize !== null) &&
-    assignedPersonId !== null;
+    assignedPersonIds.length > 0;
 
   function toggleAddition(name: string) {
     setSelectedAdditions((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
   }
   function toggleRemoval(name: string) {
     setSelectedRemovals((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
+  }
+
+  function togglePerson(personId: string) {
+    setAssignedPersonIds((prev) =>
+      prev.includes(personId) ? prev.filter((id) => id !== personId) : [...prev, personId],
+    );
   }
 
   function submitAddPersonForm() {
@@ -200,18 +225,17 @@ function ItemModal({
       grade: newPersonGrade.trim(),
       allergyNotes: newPersonAllergy.trim() || undefined,
     });
-    // Only auto-assign the new person to THIS item if their school
-    // actually matches it -- if the user deliberately picked a
-    // different school (they're adding a child for later, not for this
-    // specific item), assigning them here would just get rejected at
-    // checkout. They're still added to the roster either way, ready to
-    // use on an item from their own school.
-    if (chosenSchoolId === deliveryDate.schoolId) {
-      setAssignedPersonId(newId);
+    // Only auto-select the new person for THIS item if their school
+    // actually has this item available today -- selecting them
+    // otherwise would just be rejected at checkout. They're still added
+    // to the roster either way, ready to use on an item their school
+    // does offer.
+    if (resolveForPerson(chosenSchoolId)) {
+      setAssignedPersonIds((prev) => [...prev, newId]);
     } else {
       Alert.alert(
         "Added to your family",
-        `${newPersonName.trim()} attends a different school than this item, so they're saved but not assigned here. Pick them from an item on their own school's menu.`,
+        `${newPersonName.trim()}'s school doesn't have this item available today, so they're saved but not selected here.`,
       );
     }
     setShowAddPersonForm(false);
@@ -227,21 +251,34 @@ function ItemModal({
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    addItem(
-      {
-        menuItemId: item.id,
-        itemName: item.name,
-        basePriceCents: resolvedBase,
-        choice: selectedChoice ?? undefined,
-        size: selectedSize ?? undefined,
-        additions: selectedAdditions,
-        removals: selectedRemovals,
-        lineTotalCents: total,
-        parentChildId: assignedPersonId!, // canAdd guarantees this is set
-      },
-      deliveryDate.id,
-      deliveryDate.schoolId,
-    );
+    // One line per selected person, each routed to THEIR OWN school's
+    // delivery date for this same item -- not necessarily the date this
+    // customize sheet was opened from. Same customization (choice,
+    // add-ons) applies to everyone selected; resolveDateForPerson
+    // guarantees a date exists (the chip is disabled otherwise, so this
+    // should never be null here, but skip defensively rather than crash
+    // if it somehow is).
+    for (const personId of assignedPersonIds) {
+      const person = roster.find((p) => p.id === personId);
+      if (!person) continue;
+      const theirDate = resolveForPerson(person.schoolId);
+      if (!theirDate) continue;
+      addItem(
+        {
+          menuItemId: item.id,
+          itemName: item.name,
+          basePriceCents: resolvedBase,
+          choice: selectedChoice ?? undefined,
+          size: selectedSize ?? undefined,
+          additions: selectedAdditions,
+          removals: selectedRemovals,
+          lineTotalCents: total,
+          parentChildId: personId,
+        },
+        theirDate.id,
+        theirDate.schoolId,
+      );
+    }
     onClose();
   }
 
@@ -281,32 +318,32 @@ function ItemModal({
             </Text>
             <View style={m.chipGrid}>
               {roster.map((p) => {
-                const on = assignedPersonId === p.id;
-                const wrongSchool = p.schoolId !== deliveryDate.schoolId;
+                const on = assignedPersonIds.includes(p.id);
+                const notAvailable = !resolveForPerson(p.schoolId);
                 return (
                   <TouchableOpacity
                     key={p.id}
-                    disabled={wrongSchool}
+                    disabled={notAvailable}
                     onPress={() => {
-                      setAssignedPersonId(p.id);
+                      togglePerson(p.id);
                       setShowAddPersonForm(false);
                       Haptics.selectionAsync().catch(() => {});
                     }}
                     style={[
                       m.chip,
-                      wrongSchool
+                      notAvailable
                         ? { backgroundColor: theme.surface, borderColor: theme.border, opacity: 0.4 }
                         : {
                             backgroundColor: on ? theme.primary : theme.surface,
                             borderColor: on ? theme.primary : theme.border,
                           },
                     ]}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: on, disabled: wrongSchool }}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on, disabled: notAvailable }}
                   >
                     <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
                       {p.studentName.trim().split(/\s+/)[0]}
-                      {wrongSchool ? " (different school)" : ""}
+                      {notAvailable ? " (not available at their school)" : ""}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -548,7 +585,9 @@ function ItemModal({
           <PrimaryButton
             label={
               canAdd
-                ? `${inCart ? "Add another" : "Add to cart"} — ${formatPrice(total)}`
+                ? `${inCart ? "Add another" : "Add to cart"} — ${formatPrice(total * assignedPersonIds.length)}${
+                    assignedPersonIds.length > 1 ? ` (${assignedPersonIds.length}\u00d7)` : ""
+                  }`
                 : "Pick the required options above"
             }
             onPress={handleAdd}
