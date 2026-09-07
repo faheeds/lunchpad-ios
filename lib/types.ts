@@ -28,6 +28,9 @@ export type MenuItem = {
   slug: string;
   name: string;
   description: string | null;
+  /** Operator-set category (e.g. "Burgers & Sandwiches"). Present on
+   *  both the Menu tab response and the delivery-dates response. */
+  category?: string | null;
   imageUrl: string | null;
   basePriceCents: number;
   options: MenuOption[];
