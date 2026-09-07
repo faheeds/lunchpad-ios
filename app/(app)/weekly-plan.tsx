@@ -333,6 +333,13 @@ export default function WeeklyPlanScreen() {
                   <Text style={[s.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
                     {c.studentName.trim().split(/\s+/)[0]}
                   </Text>
+                  <Text
+                    style={[s.chipSchool, { color: on ? theme.textOnPrimary : theme.textMuted }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {c.schoolName}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -804,8 +811,9 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     progressText: { fontSize: 12, marginTop: 6 },
 
     chipRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
-    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
+    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
     chipText: { fontSize: 13, fontWeight: "600" },
+    chipSchool: { fontSize: 10, fontWeight: "500", marginTop: 1 },
 
     scroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
 
