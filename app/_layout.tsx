@@ -4,6 +4,7 @@ import * as Notifications from "expo-notifications";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import {
   Fraunces_800ExtraBold,
 } from "@expo-google-fonts/fraunces";
@@ -23,6 +24,16 @@ import { isSignedIn } from "../lib/auth";
 // `SENTRY_AUTH_TOKEN` in EAS secrets plus a `sentry.properties` file.
 // See `sentry.properties.example` at the repo root for the shape.
 initSentry();
+
+// One-time native SDK setup, same pattern as initSentry() above — safe
+// to call at module load, before any component mounts. Only iosClientId
+// is required here: the backend (POST /api/mobile/native/auth/google)
+// already accepts either the iOS client ID or the web client ID as a
+// valid token audience, so this doesn't need a webClientId configured to
+// work correctly.
+GoogleSignin.configure({
+  iosClientId: "227388554448-hif06a9s8msoeftliast23dh1p9a86of.apps.googleusercontent.com",
+});
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },

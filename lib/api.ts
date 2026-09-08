@@ -314,6 +314,9 @@ export const fetchOrders = () =>
 export const signInWithApple = (identityToken: string, fullName?: { givenName?: string; familyName?: string }) =>
   apiPost<{ token: string }>("/api/mobile/native/auth/apple", { identityToken, fullName });
 
+export const signInWithGoogle = (idToken: string) =>
+  apiPost<{ token: string }>("/api/mobile/native/auth/google", { idToken });
+
 export const addChild = (data: {
   schoolId: string;
   studentName: string;

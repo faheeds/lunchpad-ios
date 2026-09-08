@@ -1,4 +1,5 @@
 import * as AppleAuthentication from "expo-apple-authentication";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import * as SecureStore from "expo-secure-store";
 import {
   getJWT,
@@ -6,6 +7,7 @@ import {
   clearJWT,
   clearStoredBaseUrl,
   signInWithApple,
+  signInWithGoogle,
   SCHOOL_CODE_KEY,
 } from "./api";
 import { clearThemeCache } from "./theme-context";
@@ -58,5 +60,22 @@ export async function appleSignIn(): Promise<void> {
     : undefined;
 
   const { token } = await signInWithApple(credential.identityToken, fullName);
+  await setJWT(token);
+}
+
+export async function googleSignIn(): Promise<void> {
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: false }).catch(() => {
+    // hasPlayServices is an Android-only check (Google Play Services) —
+    // it always resolves fine on iOS, but wrapped defensively anyway
+    // rather than assuming it never throws there.
+  });
+  const response = await GoogleSignin.signIn();
+  const idToken = response.data?.idToken;
+
+  if (!idToken) {
+    throw new Error("Google Sign In did not return an identity token");
+  }
+
+  const { token } = await signInWithGoogle(idToken);
   await setJWT(token);
 }

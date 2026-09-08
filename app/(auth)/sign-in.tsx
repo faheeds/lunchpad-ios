@@ -1,7 +1,9 @@
 /**
- * Sign In — shown once the tenant is connected. Apple Sign In is the
- * App Store requirement (guideline 4.8); here it's framed by the three
- * concrete things the customer gets. Guest is demoted to a quiet link.
+ * Sign In — shown once the tenant is connected. Offers both Sign in with
+ * Apple and Google (Apple satisfies App Store guideline 4.8's requirement
+ * to offer it alongside any other third-party login). Framed by the
+ * three concrete things the customer gets. Guest is demoted to a quiet
+ * link.
  */
 
 import { useState, type ComponentProps } from "react";
@@ -16,7 +18,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { useRouter } from "expo-router";
-import { appleSignIn } from "../../lib/auth";
+import { appleSignIn, googleSignIn } from "../../lib/auth";
 import { useTheme } from "../../lib/theme";
 import { BrandMark } from "../../components/BrandMark";
 import { Card } from "../../components/ui";
@@ -45,6 +47,22 @@ export default function SignInScreen() {
     } catch (err: unknown) {
       const code = (err as { code?: string }).code;
       if (code !== "ERR_REQUEST_CANCELED") setError("Sign in failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setLoading(true);
+    setError("");
+    try {
+      await googleSignIn();
+      router.replace("/(app)");
+    } catch (err: unknown) {
+      // The Google Sign-In SDK's own cancel code, distinct from Apple's —
+      // don't show an error for a deliberate cancel.
+      const code = (err as { code?: string }).code;
+      if (code !== "SIGN_IN_CANCELLED" && code !== "-5") setError("Sign in failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -82,13 +100,24 @@ export default function SignInScreen() {
             {loading ? (
               <ActivityIndicator color={theme.primary} size="large" style={{ height: 52 }} />
             ) : (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={14}
-                style={styles.appleButton}
-                onPress={handleAppleSignIn}
-              />
+              <>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={14}
+                  style={styles.appleButton}
+                  onPress={handleAppleSignIn}
+                />
+                <TouchableOpacity
+                  onPress={handleGoogleSignIn}
+                  style={[styles.googleButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Continue with Google"
+                >
+                  <Ionicons name="logo-google" size={18} color={theme.textPrimary} />
+                  <Text style={[styles.googleButtonText, { color: theme.textPrimary }]}>Continue with Google</Text>
+                </TouchableOpacity>
+              </>
             )}
             {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
             <TouchableOpacity
@@ -121,6 +150,17 @@ const styles = StyleSheet.create({
   benefitText: { fontSize: 14, fontWeight: "500", flex: 1 },
   actions: { gap: 14, alignItems: "center" },
   appleButton: { width: "100%", height: 52 },
+  googleButton: {
+    width: "100%",
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  googleButtonText: { fontSize: 16, fontWeight: "600" },
   error: { fontSize: 13, textAlign: "center" },
   guest: { paddingVertical: 8 },
   guestText: { fontSize: 14, fontWeight: "600" },
