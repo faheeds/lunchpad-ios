@@ -42,6 +42,7 @@ import type {
   WeeklyPlansBundle,
 } from "../../lib/types";
 import { countDoneSlots } from "../../lib/weeklyPlanSlot";
+import { groupItemsByCategory } from "../../lib/groupByCategory";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
@@ -550,6 +551,14 @@ function ItemPickerModal({
   const [selectedAdditions, setSelectedAdditions] = useState<string[]>([]);
   const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
 
+  // Group items by category, matching the single-day order screen's
+  // display -- computed before the early return below since hooks can't
+  // run conditionally. The server already sorts each date's menuItems by
+  // the restaurant's configured category order (same fix already applied
+  // to the per-date order screen's own endpoint), so grouping via
+  // insertion order naturally produces correctly-sequenced sections.
+  const sections = useMemo(() => groupItemsByCategory(deliveryDate?.menuItems ?? []), [deliveryDate]);
+
   if (!deliveryDate) return null;
 
   // ── Item list ──────────────────────────────────────────────────────────────
@@ -566,37 +575,42 @@ function ItemPickerModal({
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={m.list}>
-            {deliveryDate.menuItems.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setSelectedItem(item);
-                  setSelectedSize(item.sizes?.[0]?.name ?? null);
-                  setSelectedChoice(null);
-                  setSelectedAdditions([]);
-                  setSelectedRemovals([]);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${item.name}`}
-              >
-                <Card style={m.itemCard}>
-                  <FoodImage uri={item.imageUrl} seed={item.id} size={64} radius={12} />
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={[m.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-                    {item.description ? (
-                      <Text style={[m.itemDesc, { color: theme.textSecondary }]} numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    ) : null}
-                    <Text style={[m.itemPrice, { color: theme.primary }]}>
-                      {formatPrice(item.basePriceCents)}
-                    </Text>
-                  </View>
-                </Card>
-              </TouchableOpacity>
+            {sections.map((section) => (
+              <View key={section.title}>
+                <Text style={[m.sectionHeader, { color: theme.textMuted }]}>{section.title}</Text>
+                {section.data.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setSelectedItem(item);
+                      setSelectedSize(item.sizes?.[0]?.name ?? null);
+                      setSelectedChoice(null);
+                      setSelectedAdditions([]);
+                      setSelectedRemovals([]);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${item.name}`}
+                  >
+                    <Card style={m.itemCard}>
+                      <FoodImage uri={item.imageUrl} seed={item.id} size={64} radius={12} />
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <Text style={[m.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
+                          {item.name}
+                        </Text>
+                        {item.description ? (
+                          <Text style={[m.itemDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                            {item.description}
+                          </Text>
+                        ) : null}
+                        <Text style={[m.itemPrice, { color: theme.primary }]}>
+                          {formatPrice(item.basePriceCents)}
+                        </Text>
+                      </View>
+                    </Card>
+                  </TouchableOpacity>
+                ))}
+              </View>
             ))}
           </ScrollView>
         </View>
@@ -889,6 +903,14 @@ const modalStyles = (theme: ReturnType<typeof useTheme>) =>
     title: { fontSize: 19, fontWeight: "600", letterSpacing: -0.3 },
     list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
     itemCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10 },
+    sectionHeader: {
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      paddingTop: 14,
+      paddingBottom: 6,
+    },
     itemName: { fontSize: 14, fontWeight: "700" },
     itemDesc: { fontSize: 12, lineHeight: 16 },
     itemPrice: { fontSize: 14, fontWeight: "700", marginTop: 1 },
