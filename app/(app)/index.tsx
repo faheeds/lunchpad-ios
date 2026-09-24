@@ -6,20 +6,32 @@
  * cutoff, the fastest way to handle the week, and what's coming up.
  */
 
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
   SafeAreaView,
+  TextInput,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans } from "../../lib/api";
+import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders, notifyMe } from "../../lib/api";
+import { pickNextDate } from "../../lib/nextDate";
 import { useTheme } from "../../lib/theme";
+import {
+  getCarouselPhotos,
+  nextCarouselIndex,
+  CAROUSEL_INTERVAL_MS,
+  CAROUSEL_RESUME_DELAY_MS,
+} from "../../lib/heroCarousel";
 import { BrandMark } from "../../components/BrandMark";
 import { FoodImage } from "../../components/FoodImage";
 import {
@@ -72,6 +84,230 @@ function hoursUntil(iso: string): number {
   return (new Date(iso).getTime() - Date.now()) / 3_600_000;
 }
 
+// TODO: respect AccessibilityInfo.isReduceMotionEnabled — pause auto-advance when enabled.
+// No reduced-motion pattern exists in this codebase yet; treat as a follow-up.
+function NextHeroCarousel({
+  photos,
+  seed,
+  style,
+}: {
+  photos: string[];
+  seed: string;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const [heroWidth, setHeroWidth] = useState(0);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resumeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUserScrollRef = useRef(false);
+
+  function stopTimer() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (resumeRef.current) {
+      clearTimeout(resumeRef.current);
+      resumeRef.current = null;
+    }
+  }
+
+  function startTimer() {
+    stopTimer();
+    if (photos.length <= 1 || heroWidth <= 0) return;
+    timerRef.current = setInterval(() => {
+      setActiveIdx((prev) => {
+        const next = nextCarouselIndex(prev, photos.length);
+        scrollRef.current?.scrollTo({ x: next * heroWidth, animated: true });
+        return next;
+      });
+    }, CAROUSEL_INTERVAL_MS);
+  }
+
+  useEffect(() => {
+    if (heroWidth > 0 && photos.length > 1) startTimer();
+    return stopTimer;
+  }, [heroWidth, photos.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (photos.length === 0) {
+    return <FoodImage uri={undefined} seed={seed} style={style} radius={0} />;
+  }
+
+  if (photos.length === 1) {
+    return <FoodImage uri={photos[0]} seed={seed} style={style} radius={0} />;
+  }
+
+  return (
+    <View
+      style={style}
+      onLayout={(e) => setHeroWidth(e.nativeEvent.layout.width)}
+    >
+      {heroWidth > 0 ? (
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScrollBeginDrag={() => {
+            isUserScrollRef.current = true;
+            stopTimer();
+          }}
+          onMomentumScrollEnd={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.x / heroWidth);
+            setActiveIdx(idx);
+            if (isUserScrollRef.current) {
+              isUserScrollRef.current = false;
+              resumeRef.current = setTimeout(startTimer, CAROUSEL_RESUME_DELAY_MS);
+            }
+          }}
+        >
+          {photos.map((uri, i) => (
+            <Image
+              key={i}
+              source={{ uri }}
+              style={{ width: heroWidth, height: 240 }}
+              resizeMode="cover"
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      <View style={carouselStyles.dots}>
+        {photos.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              carouselStyles.dot,
+              i === activeIdx ? carouselStyles.dotActive : carouselStyles.dotMuted,
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const carouselStyles = StyleSheet.create({
+  dots: {
+    position: "absolute",
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 5,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  dotActive: { backgroundColor: "rgba(255,255,255,0.95)" },
+  dotMuted: { backgroundColor: "rgba(255,255,255,0.45)" },
+});
+
+function UpcomingDatesEmpty({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const restaurantId = theme.restaurant?.id;
+
+  async function handleNotifyMe() {
+    if (!restaurantId) {
+      setError("Restaurant information not available");
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Please enter a valid email");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await notifyMe(restaurantId, email);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to subscribe");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const s = emptyStateStyles(theme);
+
+  if (submitted) {
+    return (
+      <Card style={s.card}>
+        <View style={s.successIcon}>
+          <Ionicons name="checkmark-circle" size={40} color={theme.success} />
+        </View>
+        <Text style={[s.successTitle, { color: theme.textPrimary }]}>
+          We'll email you when new dates are added
+        </Text>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={s.card}>
+      <Ionicons name="calendar-outline" size={30} color={theme.textMuted} />
+      <Text style={[s.title, { color: theme.textPrimary }]}>No dates open yet</Text>
+      <Text style={[s.subtitle, { color: theme.textMuted }]}>
+        New delivery dates are added regularly
+      </Text>
+
+      <View style={s.inputRow}>
+        <TextInput
+          placeholder="your@email.com"
+          placeholderTextColor={theme.textMuted}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          editable={!isSubmitting}
+          value={email}
+          onChangeText={setEmail}
+          accessibilityLabel="Email address"
+          style={[s.input, { borderColor: theme.border, color: theme.textPrimary }]}
+        />
+        <PrimaryButton
+          label="Notify me"
+          onPress={handleNotifyMe}
+          disabled={isSubmitting}
+          loading={isSubmitting}
+          style={s.button}
+        />
+      </View>
+
+      {error ? (
+        <Text style={[s.error, { color: theme.danger }]}>
+          {error}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
+
+const emptyStateStyles = (theme: ReturnType<typeof useTheme>) =>
+  StyleSheet.create({
+    card: { padding: 18, alignItems: "center", gap: 8 },
+    title: { fontSize: 15, fontWeight: "700", marginTop: 4 },
+    subtitle: { fontSize: 13, textAlign: "center", lineHeight: 18 },
+    inputRow: { width: "100%", gap: 8, marginTop: 6 },
+    input: {
+      borderWidth: 1,
+      borderRadius: 10,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      fontSize: 14,
+    },
+    button: { paddingVertical: 12, paddingHorizontal: 16 },
+    error: { fontSize: 12, textAlign: "center", marginTop: 4 },
+    successIcon: { alignItems: "center", marginBottom: 4 },
+    successTitle: { fontSize: 15, fontWeight: "700", textAlign: "center", lineHeight: 20 },
+  });
+
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
@@ -81,15 +317,23 @@ export default function HomeScreen() {
   const datesQ = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
   const accountQ = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
   const weeklyQ = useQuery({ queryKey: ["weekly-plans"], queryFn: fetchWeeklyPlans, retry: false });
+  const ordersQ = useQuery({ queryKey: ["orders"], queryFn: fetchOrders, retry: false });
 
   const dates = datesQ.data ?? [];
-  const nextDate = dates[0];
   const children = accountQ.data?.children ?? [];
+  const nextDate = pickNextDate(dates, children.map((c) => c.schoolId));
   const firstName = accountQ.data?.name?.trim().split(/\s+/)[0];
   const restaurantName = theme.restaurant?.name;
 
-  const plannedCount = weeklyQ.data?.plans.length ?? 0;
   const weekDayCount = weeklyQ.data?.deliveryDates.length ?? 0;
+  const weeklyDateIds = new Set((weeklyQ.data?.deliveryDates ?? []).map((d) => d.id));
+  const orderedDayCount = (ordersQ.data ?? []).filter(
+    (o) =>
+      o.deliveryDateId != null &&
+      weeklyDateIds.has(o.deliveryDateId) &&
+      o.status !== "CANCELLED",
+  ).length;
+  const plannedCount = (weeklyQ.data?.plans.length ?? 0) + orderedDayCount;
   const weeklyProgress = weekDayCount > 0 ? Math.min(1, plannedCount / weekDayCount) : 0;
 
   function goToDate(id: string) {
@@ -138,6 +382,7 @@ export default function HomeScreen() {
   }
 
   const nextUrgent = nextDate ? hoursUntil(nextDate.cutoffAt) < 24 : false;
+  const heroPhotos = nextDate ? getCarouselPhotos(nextDate.menuItems) : [];
 
   return (
     <Screen>
@@ -170,28 +415,31 @@ export default function HomeScreen() {
           {/* Next up */}
           {nextDate ? (
             <Card style={[s.nextCard, nextUrgent && { borderColor: theme.accent }]}>
-              <View style={s.nextHead}>
-                <Eyebrow>Next lunch</Eyebrow>
-                {nextUrgent ? (
-                  <Pill
-                    label={`Cutoff in ${Math.max(1, Math.ceil(hoursUntil(nextDate.cutoffAt)))}h`}
-                    tone="urgent"
-                  />
-                ) : null}
+              <NextHeroCarousel photos={heroPhotos} seed={nextDate.id} style={s.nextHero} />
+              <View style={s.nextBody}>
+                <View style={s.nextHead}>
+                  <Eyebrow>Next lunch</Eyebrow>
+                  {nextUrgent ? (
+                    <Pill
+                      label={`Cutoff in ${Math.max(1, Math.ceil(hoursUntil(nextDate.cutoffAt)))}h`}
+                      tone="urgent"
+                    />
+                  ) : null}
+                </View>
+                <Text
+                  style={[s.nextTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+                >
+                  {fmtLong(nextDate.deliveryDate)}
+                </Text>
+                <Text style={[s.nextSub, { color: theme.textSecondary }]}>
+                  {nextDate.school.name} · order by {fmtCutoff(nextDate.cutoffAt)}
+                </Text>
+                <PrimaryButton
+                  label="Choose this day's lunch"
+                  onPress={() => goToDate(nextDate.id)}
+                  style={{ marginTop: 12 }}
+                />
               </View>
-              <Text
-                style={[s.nextTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
-              >
-                {fmtLong(nextDate.deliveryDate)}
-              </Text>
-              <Text style={[s.nextSub, { color: theme.textSecondary }]}>
-                {nextDate.school.name} · order by {fmtCutoff(nextDate.cutoffAt)}
-              </Text>
-              <PrimaryButton
-                label="Choose this day's lunch"
-                onPress={() => goToDate(nextDate.id)}
-                style={{ marginTop: 12 }}
-              />
             </Card>
           ) : null}
 
@@ -275,13 +523,7 @@ export default function HomeScreen() {
           {/* Upcoming dates */}
           <SectionTitle>Upcoming dates</SectionTitle>
           {dates.length === 0 ? (
-            <Card style={{ padding: 22, alignItems: "center", gap: 6 }}>
-              <Ionicons name="calendar-outline" size={30} color={theme.textMuted} />
-              <Text style={[s.emptyTitle, { color: theme.textPrimary }]}>No dates open yet</Text>
-              <Text style={[s.emptyMsg, { color: theme.textMuted }]}>
-                New delivery dates are added regularly — check back soon.
-              </Text>
-            </Card>
+            <UpcomingDatesEmpty theme={theme} />
           ) : (
             dates.map((d) => (
               <TouchableOpacity
@@ -327,7 +569,9 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     greetSmall: { fontSize: 13, fontWeight: "600" },
     greetBig: { fontSize: 26, fontWeight: "600", letterSpacing: -0.5, marginTop: 1 },
 
-    nextCard: { padding: 16 },
+    nextCard: { overflow: "hidden" },
+    nextHero: { width: "100%", height: 240 },
+    nextBody: { padding: 16 },
     nextHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     nextTitle: { fontSize: 20, fontWeight: "600", letterSpacing: -0.3, marginTop: 8 },
     nextSub: { fontSize: 13.5, marginTop: 3 },

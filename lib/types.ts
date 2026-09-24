@@ -4,6 +4,10 @@ export type School = {
   timezone: string;
   /** "SCHOOL" or "OFFICE" — drives school-vs-office wording in the app. */
   locationType?: "SCHOOL" | "OFFICE";
+  /** Operator-configured grades/sections for this school, shown in the
+   *  add-child grade picker. Empty or absent = fall back to
+   *  STANDARD_GRADES (lib/grades.ts) rather than showing nothing. */
+  grades?: string[];
 };
 
 export type MenuOption = {
@@ -24,6 +28,9 @@ export type MenuItem = {
   slug: string;
   name: string;
   description: string | null;
+  /** Operator-set category (e.g. "Burgers & Sandwiches"). Present on
+   *  both the Menu tab response and the delivery-dates response. */
+  category?: string | null;
   imageUrl: string | null;
   basePriceCents: number;
   options: MenuOption[];
@@ -37,9 +44,10 @@ export type MenuItem = {
    *  until one is chosen. Empty / undefined = no required choice. */
   requiredChoices?: string[];
   /** Size variants with absolute per-size prices. When non-empty, the
-   *  customer MUST pick a size before adding to cart — the selected
-   *  size's `priceCents` becomes the line's per-unit price instead of
-   *  `basePriceCents`. Add-ons stack on top normally. */
+   *  customer MUST pick a size before adding to cart. For the exact
+   *  base + size + add-on pricing algorithm see `lib/pricing.ts`
+   *  (`computeLineTotalCents`) — the single source of truth for
+   *  every price shown in the app. */
   sizes?: MenuItemSize[];
 };
 
@@ -86,28 +94,62 @@ export type CartItem = {
   additions: string[];
   removals: string[];
   allergyNotes?: string;
-  /** Per-unit total (base + additions). For sized items, base is the
-   *  selected size's priceCents (not the menu item's basePriceCents).
-   *  Multiply by `quantity` for the line total shown in the cart. */
+  /** Per-unit total for this configured line. Computed by
+   *  `computeLineTotalCents` in `lib/pricing.ts` — do not recompute
+   *  inline. Multiply by `quantity` for the cart-line subtotal. */
   lineTotalCents: number;
   /** Number of identical units of this configuration. Always ≥ 1. */
   quantity: number;
+  /** Which person (real saved child or draft) this line is for. Always
+   *  set at the moment the line is created — the ordering screen requires
+   *  picking someone before "Add to cart" is enabled, so this is never
+   *  undefined for a real cart line. Reassignable afterward (cart.tsx),
+   *  which changes just this one line via the store's
+   *  assignItemToChild. */
+  parentChildId: string;
+  /** Which delivery date (and therefore which school) this line was
+   *  added from. Required, not optional — every line always belongs to
+   *  a specific date/school, even in a single-school cart. This is what
+   *  lets a cart hold items from more than one school at once: each
+   *  line carries its own date instead of the whole cart sharing one. */
+  deliveryDateId: string;
+  schoolId: string;
 };
 
 /** Build a deterministic key from a cart-item configuration. Same options
  *  in a different order still hash to the same key so we don't end up
  *  with sibling lines that should be one. Includes both `size` and
- *  `choice` so Beef-Medium and Beef-Large are separate cart lines. */
+ *  `choice` so Beef-Medium and Beef-Large are separate cart lines.
+ *  Includes deliveryDateId so the exact same item added from two
+ *  different schools' menus stays two separate lines rather than merging
+ *  into one — without this, ordering the same menu item for a Bellevue
+ *  child and a Redmond child on the same day would collide into a single
+ *  cart line with the wrong combined quantity and only one school. */
+/** Build a deterministic key from a cart-item configuration. Same options
+ *  in a different order still hash to the same key so we don't end up
+ *  with sibling lines that should be one. Includes both `size` and
+ *  `choice` so Beef-Medium and Beef-Large are separate cart lines.
+ *  Includes deliveryDateId so the exact same item added from two
+ *  different schools' menus stays two separate lines rather than
+ *  colliding into one with the wrong combined quantity and only one
+ *  school. Includes parentChildId so the exact same item, same
+ *  customizations, same date, added for two DIFFERENT people stays two
+ *  separate lines too -- without this, "Classic Cheeseburger for Hana"
+ *  and "Classic Cheeseburger for Hiba" would collide into one line with
+ *  a combined quantity and only one of them actually assigned, which is
+ *  exactly the real bug this key change exists to prevent. */
 export function buildCartKey(
   menuItemId: string,
   size: string | undefined,
   choice: string | undefined,
   additions: string[],
   removals: string[],
+  deliveryDateId: string,
+  parentChildId: string,
 ): string {
   const a = [...additions].sort().join("|");
   const r = [...removals].sort().join("|");
-  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}`;
+  return `${menuItemId}::${size ?? ""}::${choice ?? ""}::${a}::${r}::${deliveryDateId}::${parentChildId}`;
 }
 
 export type Child = {
@@ -136,6 +178,12 @@ export type OrderHistoryItem = {
   totalCents: number;
   createdAt: string;
   items: { name: string; lineTotalCents: number; additions: string[]; removals: string[] }[];
+  /** Which child this order is for — present on orders placed after this
+   *  field was added to the web endpoint. Absent on historical orders. */
+  parentChildId?: string;
+  /** Which delivery date slot this order occupies — used to cross-reference
+   *  against weekly plan slots. Absent on pre-rollout orders. */
+  deliveryDateId?: string;
 };
 
 // ── Weekly plan bundle ───────────────────────────────────────────────────────
@@ -175,4 +223,13 @@ export type WeeklyPlansBundle = {
   children: WeeklyChild[];
   deliveryDates: WeeklyDeliveryDate[];
   plans: WeeklyPlan[];
+};
+
+/** A single result from GET /api/mobile/native/restaurants/search on the web app. */
+export type RestaurantSearchResult = {
+  id: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
 };

@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { reportError } from "./sentry";
 
 export const SCHOOL_CODE_KEY = "lunchpad_school_code";
 export const BASE_URL_KEY = "lunchpad_base_url";
@@ -54,41 +55,126 @@ async function buildHeaders(auth = true): Promise<Record<string, string>> {
  * In all cases the right move is to clear the JWT so the app's auth gate
  * routes the user back to sign-in. We re-throw the error so the caller
  * still sees the failure.
+ *
+ * Sentry reporting policy (see Ticket 2 for the rationale):
+ *   - 401: expected auth flow — do NOT report.
+ *   - Other 4xx: client-side / user-input errors (e.g. 404 stale link) —
+ *     do NOT report, they'll show up as user-facing error toasts anyway.
+ *   - 5xx: server bug — REPORT.
+ *   - JSON parse failure on a 2xx: unexpected — REPORT.
+ * The `path` and `method` args are passed only so we can tag the Sentry
+ * event with a coarse operation label. Callers pass literal path strings
+ * with no PII in them.
  */
-async function handleResponse<T>(res: Response): Promise<T> {
+async function handleResponse<T>(
+  res: Response,
+  path: string,
+  method: string,
+): Promise<T> {
   if (res.status === 401) {
     await clearJWT();
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
+    const message = err.error ?? `HTTP ${res.status}`;
+    if (res.status >= 500) {
+      reportError(new Error(`API ${method} ${path} → ${res.status}`), {
+        status: res.status,
+        path,
+        method,
+      });
+    }
+    throw new Error(message);
   }
-  return res.json();
+  try {
+    return (await res.json()) as T;
+  } catch (parseErr) {
+    reportError(parseErr, {
+      kind: "response-parse-error",
+      path,
+      method,
+      status: res.status,
+    });
+    throw parseErr;
+  }
+}
+
+/**
+ * Wraps `fetch` so that a thrown fetch (i.e. network failure — DNS, offline,
+ * TLS error) is reported to Sentry once before being re-thrown. HTTP-level
+ * failures are handled by `handleResponse` and NOT reported here.
+ */
+async function safeFetch(
+  url: string,
+  init: RequestInit,
+  path: string,
+  method: string,
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (networkErr) {
+    reportError(networkErr, {
+      kind: "network-error",
+      path,
+      method,
+    });
+    throw networkErr;
+  }
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
   const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, { headers: await buildHeaders(true) });
-  return handleResponse<T>(res);
+  const res = await safeFetch(
+    `${base}${path}`,
+    { headers: await buildHeaders(true) },
+    path,
+    "GET",
+  );
+  return handleResponse<T>(res, path, "GET");
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, {
-    method: "POST",
-    headers: await buildHeaders(true),
-    body: JSON.stringify(body),
-  });
-  return handleResponse<T>(res);
+  const res = await safeFetch(
+    `${base}${path}`,
+    {
+      method: "POST",
+      headers: await buildHeaders(true),
+      body: JSON.stringify(body),
+    },
+    path,
+    "POST",
+  );
+  return handleResponse<T>(res, path, "POST");
+}
+
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  const base = await getBaseUrl();
+  const res = await safeFetch(
+    `${base}${path}`,
+    {
+      method: "PATCH",
+      headers: await buildHeaders(true),
+      body: JSON.stringify(body),
+    },
+    path,
+    "PATCH",
+  );
+  return handleResponse<T>(res, path, "PATCH");
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
   const base = await getBaseUrl();
-  const res = await fetch(`${base}${path}`, {
-    method: "DELETE",
-    headers: await buildHeaders(true),
-  });
-  return handleResponse<T>(res);
+  const res = await safeFetch(
+    `${base}${path}`,
+    {
+      method: "DELETE",
+      headers: await buildHeaders(true),
+    },
+    path,
+    "DELETE",
+  );
+  return handleResponse<T>(res, path, "DELETE");
 }
 
 // ── School code validation ───────────────────────────────────────────────────
@@ -129,6 +215,67 @@ export async function validateSchoolCode(
   }
 }
 
+/**
+ * Live search for a restaurant by name, slug, or pasted link. Unlike every
+ * other function in this file, this always hits the fixed apex domain
+ * (lunchpad.us) — there is no tenant context yet at this point in the flow,
+ * so there's no per-tenant `baseUrl` to resolve against. The endpoint
+ * itself is unauthenticated and cross-tenant by design (see
+ * docs/mobile-api-contract.md in the web repo for the full contract).
+ *
+ * Callers are responsible for debouncing — this is a plain one-shot fetch.
+ * Returns an empty array on any error (network failure, non-2xx response,
+ * bad JSON) rather than throwing, so a flaky search never blocks the
+ * existing manual code-entry path.
+ */
+export async function searchRestaurants(
+  query: string
+): Promise<RestaurantSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  try {
+    const res = await fetch(
+      `https://lunchpad.us/api/mobile/native/restaurants/search?q=${encodeURIComponent(q)}`,
+      { headers: { "Content-Type": "application/json" } }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  } catch (err) {
+    reportError(err, { context: "searchRestaurants" });
+    return [];
+  }
+}
+
+/**
+ * Notify-me subscription for upcoming delivery dates. Hits the fixed apex
+ * domain (https://lunchpad.us/api/notify-me) — similar pattern to
+ * searchRestaurants, a cross-tenant public endpoint.
+ *
+ * Throws on network error or non-2xx response so the caller can show
+ * a user-facing error message. The endpoint is idempotent, so submitting
+ * the same restaurantId + email twice is safe.
+ */
+export async function notifyMe(restaurantId: string, email: string): Promise<void> {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) throw new Error("Email is required");
+
+  const res = await fetch(
+    "https://lunchpad.us/api/notify-me",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ restaurantId, email: trimmedEmail }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+}
+
 // ── Typed API calls ──────────────────────────────────────────────────────────
 
 import type {
@@ -136,6 +283,7 @@ import type {
   Parent,
   OrderHistoryItem,
   RestaurantMenu,
+  RestaurantSearchResult,
   WeeklyPlansBundle,
   WeeklyPlan,
 } from "./types";
@@ -147,14 +295,14 @@ export const fetchDeliveryDates = () =>
 export async function fetchMenu(): Promise<RestaurantMenu> {
   // Menu is public; bypass the JWT header so guests can browse too.
   const base = await getBaseUrl();
-  const res = await fetch(`${base}/api/mobile/native/menu`, {
-    headers: { "Content-Type": "application/json" },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
-  }
-  return res.json();
+  const path = "/api/mobile/native/menu";
+  const res = await safeFetch(
+    `${base}${path}`,
+    { headers: { "Content-Type": "application/json" } },
+    path,
+    "GET",
+  );
+  return handleResponse<RestaurantMenu>(res, path, "GET");
 }
 
 export const fetchAccount = () =>
@@ -166,12 +314,33 @@ export const fetchOrders = () =>
 export const signInWithApple = (identityToken: string, fullName?: { givenName?: string; familyName?: string }) =>
   apiPost<{ token: string }>("/api/mobile/native/auth/apple", { identityToken, fullName });
 
+export const signInWithGoogle = (idToken: string) =>
+  apiPost<{ token: string }>("/api/mobile/native/auth/google", { idToken });
+
 export const addChild = (data: {
   schoolId: string;
   studentName: string;
   grade: string;
   allergyNotes?: string;
-}) => apiPost("/api/mobile/native/account/children", data);
+}) =>
+  apiPost<{
+    id: string;
+    schoolId: string;
+    schoolName: string;
+    locationType?: "SCHOOL" | "OFFICE";
+    studentName: string;
+    grade: string;
+    allergyNotes: string;
+  }>("/api/mobile/native/account/children", data);
+
+export const editChild = (id: string, data: {
+  studentName?: string;
+  grade?: string;
+  allergyNotes?: string;
+}) => apiPatch(`/api/mobile/native/account/children/${encodeURIComponent(id)}`, data);
+
+export const deleteChild = (id: string) =>
+  apiDelete<{ ok: true }>(`/api/mobile/native/account/children/${encodeURIComponent(id)}`);
 
 // ── Weekly plan ──────────────────────────────────────────────────────────────
 
@@ -189,7 +358,7 @@ export const upsertWeeklyPlan = (data: {
 }) => apiPost<WeeklyPlan>("/api/mobile/native/weekly-plans", data);
 
 export const deleteWeeklyPlan = (planId: string) =>
-  apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${planId}`);
+  apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${encodeURIComponent(planId)}`);
 
 export const createWeeklyCheckout = () =>
   apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>(
@@ -213,6 +382,44 @@ export const createOrder = (data: {
   items: { menuItemId: string; choice?: string; size?: string; additions?: string[]; removals?: string[] }[];
 }) => apiPost<{ checkoutUrl: string; orderId: string }>("/api/mobile/native/order", data);
 
+/**
+ * Ad-hoc equivalent of createOrder for a cart with items assigned to more
+ * than one saved child. One payment; the server creates one Order per
+ * item after payment, each correctly attributed to its own child — see
+ * docs/mobile-api-contract.md in the web repo for the full contract.
+ */
+export const createCartCheckout = (data: {
+  items: {
+    parentChildId: string;
+    deliveryDateId: string;
+    menuItemId: string;
+    choice?: string;
+    size?: string;
+    additions?: string[];
+    removals?: string[];
+  }[];
+}) => apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>("/api/mobile/native/cart-checkout", data);
+
 /** Permanently deletes the signed-in parent's account (App Store 5.1.1(v)). */
 export const deleteAccount = () =>
   apiDelete<{ ok: true }>("/api/mobile/native/account");
+
+// ── Order modification ───────────────────────────────────────────────────────
+
+export type ModifyOrderItem = {
+  menuItemId: string;
+  choice?: string;
+  size?: string;
+  additions?: string[];
+  removals?: string[];
+};
+
+export type ModifyOrderResponse =
+  | { action: "updated"; order: OrderHistoryItem }
+  | { action: "checkout_required"; checkoutUrl: string };
+
+export const modifyOrder = (orderId: string, items: ModifyOrderItem[]) =>
+  apiPatch<ModifyOrderResponse>(
+    `/api/mobile/native/orders/${encodeURIComponent(orderId)}`,
+    { items },
+  );

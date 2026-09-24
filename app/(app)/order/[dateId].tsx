@@ -4,24 +4,31 @@
  * A floating cart bar carries the running total to checkout.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
   FlatList,
+  SectionList,
   TouchableOpacity,
   StyleSheet,
   Modal,
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  TextInput,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { fetchDeliveryDates } from "../../../lib/api";
+import { fetchDeliveryDates, fetchAccount } from "../../../lib/api";
 import { useCart, formatPrice } from "../../../lib/store";
+import { computeLineTotalCents } from "../../../lib/pricing";
+import { groupItemsByCategory } from "../../../lib/groupByCategory";
+import { STANDARD_GRADES } from "../../../lib/grades";
+import { resolveDateForPerson, buildSameDayDatesBySchool } from "../../../lib/resolvePersonDate";
 import type { MenuItem, DeliveryDateWithMenu } from "../../../lib/types";
 import { useTheme } from "../../../lib/theme";
 import { FoodImage } from "../../../components/FoodImage";
@@ -102,6 +109,64 @@ function ItemModal({
   const m = modalStyles(theme);
   const addItem = useCart((st) => st.addItem);
   const inCart = useCart((st) => st.items.some((i) => i.menuItemId === item.id));
+  const drafts = useCart((st) => st.drafts);
+  const addDraftChild = useCart((st) => st.addDraftChild);
+
+  // Reuses the same React Query cache keys the cart, account, and this
+  // screen's own parent component already populate -- these don't
+  // trigger extra network requests once that data has loaded, just read
+  // the shared cache.
+  const { data: account } = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
+  const { data: allDatesForSchools } = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
+  const isOffice = deliveryDate.school.locationType === "OFFICE";
+
+  // Every distinct school available to this restaurant -- used by the
+  // "add a child" form's school picker so a brand-new person can be
+  // added for ANY school the restaurant serves, not just whichever
+  // school this particular item happens to belong to.
+  const allSchools = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; grades?: string[] }>();
+    (allDatesForSchools ?? []).forEach((d) => map.set(d.school.id, d.school));
+    return [...map.values()];
+  }, [allDatesForSchools]);
+
+  // Many restaurants run the same menu across every school they serve --
+  // confirmed directly: this same menu item is genuinely available on
+  // both Redmond's and Bellevue's delivery dates for the same calendar
+  // day. So "who's this for" isn't actually limited to one school --
+  // it's limited to whichever schools ALSO have a delivery date for this
+  // exact same day with this SAME item available.
+  const sameDayDatesBySchool = useMemo(
+    () => buildSameDayDatesBySchool(allDatesForSchools ?? [], deliveryDate.deliveryDate),
+    [allDatesForSchools, deliveryDate.deliveryDate],
+  );
+
+  /** Resolves which delivery date to actually use for a given person's
+   *  cart line: THEIR OWN school's date for this same day, if that
+   *  school has one and this item is available there -- never just the
+   *  date the customer happened to be browsing. Returns null if this
+   *  person's school genuinely can't get this item today. */
+  function resolveForPerson(schoolId: string) {
+    return resolveDateForPerson(schoolId, item.id, sameDayDatesBySchool);
+  }
+
+  // Who's this for -- EVERY saved child plus every draft added this
+  // session, never filtered out of the list entirely. Multi-select: one
+  // customization (choice/add-ons) can apply to several kids at once,
+  // each landing on THEIR OWN school's version of this same item.
+  // A child whose school can't actually get this item today is still
+  // shown (so a saved child never silently seems to not exist), just
+  // disabled with a clear reason.
+  const roster = useMemo(
+    () => [...(account?.children ?? []), ...drafts],
+    [account, drafts],
+  );
+  const [assignedPersonIds, setAssignedPersonIds] = useState<string[]>([]);
+  const [showAddPersonForm, setShowAddPersonForm] = useState(false);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonSchoolId, setNewPersonSchoolId] = useState<string | null>(null);
+  const [newPersonGrade, setNewPersonGrade] = useState("");
+  const [newPersonAllergy, setNewPersonAllergy] = useState("");
 
   const sizes = item.sizes ?? [];
   const requiredChoices = item.requiredChoices ?? [];
@@ -116,15 +181,20 @@ function ItemModal({
   const additions = item.options.filter((o) => o.optionType === "ADD_ON" || o.optionType === "ADD");
   const removals = item.options.filter((o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE");
 
-  const extraCents = additions
-    .filter((o) => selectedAdditions.includes(o.name))
-    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
+  // Per-unit price for the line — canonical formula lives in lib/pricing.ts.
+  // We still need `resolvedBase` separately because the cart stores it as
+  // the line's `basePriceCents` (size-aware) alongside the full total.
   const resolvedBase = hasSize
     ? (sizes.find((sz) => sz.name === selectedSize) ?? sizes[0]).priceCents
     : item.basePriceCents;
-  const total = resolvedBase + extraCents;
+  const total = computeLineTotalCents(item, {
+    size: selectedSize,
+    additions: selectedAdditions,
+  });
   const canAdd =
-    (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
+    (!hasRequiredChoice || selectedChoice !== null) &&
+    (!hasSize || selectedSize !== null) &&
+    assignedPersonIds.length > 0;
 
   function toggleAddition(name: string) {
     setSelectedAdditions((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
@@ -133,26 +203,82 @@ function ItemModal({
     setSelectedRemovals((p) => (p.includes(name) ? p.filter((x) => x !== name) : [...p, name]));
   }
 
+  function togglePerson(personId: string) {
+    setAssignedPersonIds((prev) =>
+      prev.includes(personId) ? prev.filter((id) => id !== personId) : [...prev, personId],
+    );
+  }
+
+  function submitAddPersonForm() {
+    if (newPersonName.trim().length < 2) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+    const chosenSchoolId = newPersonSchoolId ?? deliveryDate.schoolId;
+    if (!isOffice && !newPersonGrade.trim()) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return;
+    }
+    const newId = addDraftChild({
+      studentName: newPersonName.trim(),
+      schoolId: chosenSchoolId,
+      grade: newPersonGrade.trim(),
+      allergyNotes: newPersonAllergy.trim() || undefined,
+    });
+    // Only auto-select the new person for THIS item if their school
+    // actually has this item available today -- selecting them
+    // otherwise would just be rejected at checkout. They're still added
+    // to the roster either way, ready to use on an item their school
+    // does offer.
+    if (resolveForPerson(chosenSchoolId)) {
+      setAssignedPersonIds((prev) => [...prev, newId]);
+    } else {
+      Alert.alert(
+        "Added to your family",
+        `${newPersonName.trim()}'s school doesn't have this item available today, so they're saved but not selected here.`,
+      );
+    }
+    setShowAddPersonForm(false);
+    setNewPersonName("");
+    setNewPersonSchoolId(null);
+    setNewPersonGrade("");
+    setNewPersonAllergy("");
+  }
+
   function handleAdd() {
     if (!canAdd) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    addItem(
-      {
-        menuItemId: item.id,
-        itemName: item.name,
-        basePriceCents: resolvedBase,
-        choice: selectedChoice ?? undefined,
-        size: selectedSize ?? undefined,
-        additions: selectedAdditions,
-        removals: selectedRemovals,
-        lineTotalCents: total,
-      },
-      deliveryDate.id,
-      deliveryDate.schoolId,
-    );
+    // One line per selected person, each routed to THEIR OWN school's
+    // delivery date for this same item -- not necessarily the date this
+    // customize sheet was opened from. Same customization (choice,
+    // add-ons) applies to everyone selected; resolveDateForPerson
+    // guarantees a date exists (the chip is disabled otherwise, so this
+    // should never be null here, but skip defensively rather than crash
+    // if it somehow is).
+    for (const personId of assignedPersonIds) {
+      const person = roster.find((p) => p.id === personId);
+      if (!person) continue;
+      const theirDate = resolveForPerson(person.schoolId);
+      if (!theirDate) continue;
+      addItem(
+        {
+          menuItemId: item.id,
+          itemName: item.name,
+          basePriceCents: resolvedBase,
+          choice: selectedChoice ?? undefined,
+          size: selectedSize ?? undefined,
+          additions: selectedAdditions,
+          removals: selectedRemovals,
+          lineTotalCents: total,
+          parentChildId: personId,
+        },
+        theirDate.id,
+        theirDate.schoolId,
+      );
+    }
     onClose();
   }
 
@@ -185,6 +311,150 @@ function ItemModal({
           {item.description ? (
             <Text style={[m.description, { color: theme.textSecondary }]}>{item.description}</Text>
           ) : null}
+
+          <View style={m.section}>
+            <Text style={[m.sectionTitle, { color: theme.textMuted }]}>
+              WHO'S THIS FOR <Text style={{ color: theme.accent }}>· required</Text>
+            </Text>
+            <View style={m.chipGrid}>
+              {roster.map((p) => {
+                const on = assignedPersonIds.includes(p.id);
+                const notAvailable = !resolveForPerson(p.schoolId);
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    disabled={notAvailable}
+                    onPress={() => {
+                      togglePerson(p.id);
+                      setShowAddPersonForm(false);
+                      Haptics.selectionAsync().catch(() => {});
+                    }}
+                    style={[
+                      m.chip,
+                      notAvailable
+                        ? { backgroundColor: theme.surface, borderColor: theme.border, opacity: 0.4 }
+                        : {
+                            backgroundColor: on ? theme.primary : theme.surface,
+                            borderColor: on ? theme.primary : theme.border,
+                          },
+                    ]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on, disabled: notAvailable }}
+                  >
+                    <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                      {p.studentName.trim().split(/\s+/)[0]}
+                      {notAvailable ? " (not available at their school)" : ""}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                onPress={() => setShowAddPersonForm((v) => !v)}
+                style={[
+                  m.chip,
+                  {
+                    backgroundColor: showAddPersonForm ? theme.primary : theme.surface,
+                    borderColor: showAddPersonForm ? theme.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[m.chipText, { color: showAddPersonForm ? theme.textOnPrimary : theme.textPrimary }]}
+                >
+                  + Add a child
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {showAddPersonForm ? (
+              <View style={{ gap: 8, marginTop: 10 }}>
+                <TextInput
+                  style={[
+                    m.textInput,
+                    { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.surface },
+                  ]}
+                  value={newPersonName}
+                  onChangeText={setNewPersonName}
+                  placeholder="Their name"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="words"
+                />
+                {!isOffice ? (() => {
+                  const chosenSchoolId = newPersonSchoolId ?? deliveryDate.schoolId;
+                  const chosenSchool = allSchools.find((sc) => sc.id === chosenSchoolId);
+                  return (
+                    <>
+                      {allSchools.length > 1 ? (
+                        <View style={m.chipGrid}>
+                          {allSchools.map((sc) => {
+                            const on = chosenSchoolId === sc.id;
+                            return (
+                              <TouchableOpacity
+                                key={sc.id}
+                                onPress={() => {
+                                  setNewPersonSchoolId(sc.id);
+                                  setNewPersonGrade(""); // grades differ per school -- don't carry over a stale pick
+                                }}
+                                style={[
+                                  m.chip,
+                                  {
+                                    backgroundColor: on ? theme.primary : theme.surface,
+                                    borderColor: on ? theme.primary : theme.border,
+                                  },
+                                ]}
+                              >
+                                <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                                  {sc.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                      <View style={m.chipGrid}>
+                        {(chosenSchool?.grades?.length ? chosenSchool.grades : STANDARD_GRADES).map((g) => {
+                          const on = newPersonGrade === g;
+                          return (
+                            <TouchableOpacity
+                              key={g}
+                              onPress={() => setNewPersonGrade(g)}
+                              style={[
+                                m.chip,
+                                {
+                                  backgroundColor: on ? theme.primary : theme.surface,
+                                  borderColor: on ? theme.primary : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text style={[m.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
+                                {g}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  );
+                })() : null}
+                <TextInput
+                  style={[
+                    m.textInput,
+                    { color: theme.textPrimary, borderColor: theme.border, backgroundColor: theme.surface },
+                  ]}
+                  value={newPersonAllergy}
+                  onChangeText={setNewPersonAllergy}
+                  placeholder="Allergy notes (optional)"
+                  placeholderTextColor={theme.textMuted}
+                />
+                <TouchableOpacity
+                  onPress={submitAddPersonForm}
+                  style={[m.addPersonBtn, { backgroundColor: theme.primary }]}
+                >
+                  <Text style={{ color: theme.textOnPrimary, fontWeight: "700" }}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
 
           {hasSize ? (
             <View style={m.section}>
@@ -315,7 +585,9 @@ function ItemModal({
           <PrimaryButton
             label={
               canAdd
-                ? `${inCart ? "Add another" : "Add to cart"} — ${formatPrice(total)}`
+                ? `${inCart ? "Add another" : "Add to cart"} — ${formatPrice(total * assignedPersonIds.length)}${
+                    assignedPersonIds.length > 1 ? ` (${assignedPersonIds.length}\u00d7)` : ""
+                  }`
                 : "Pick the required options above"
             }
             onPress={handleAdd}
@@ -354,6 +626,13 @@ export default function OrderScreen() {
   });
   const deliveryDate = allDates?.find((d) => d.id === dateId);
 
+  // Group items by category, preserving the order they arrive in — the
+  // server already sorts menuItems by the restaurant's configured
+  // category order (falling back to alphabetical), so grouping via a Map
+  // (which preserves insertion order) naturally produces sections in the
+  // correct sequence without the client needing to re-sort anything.
+  const sections = useMemo(() => groupItemsByCategory(deliveryDate?.menuItems ?? []), [deliveryDate]);
+
   useEffect(() => {
     if (preselectHandled.current) return;
     if (preselectedItemId && deliveryDate) {
@@ -386,11 +665,20 @@ export default function OrderScreen() {
           onBack={() => router.back()}
           safeArea={false}
         />
-        <FlatList
-          data={deliveryDate.menuItems}
+        <SectionList
+          sections={sections}
           keyExtractor={(i) => i.id}
           contentContainerStyle={s.list}
           showsVerticalScrollIndicator={false}
+          stickySectionHeadersEnabled={false}
+          renderSectionHeader={({ section }) => (
+            <View style={s.sectionHead}>
+              <Text style={[s.sectionTitle, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+                {section.title}
+              </Text>
+              <Text style={[s.sectionCount, { color: theme.textMuted }]}>{section.data.length}</Text>
+            </View>
+          )}
           renderItem={({ item }) => (
             <MenuItemCard
               item={item}
@@ -441,6 +729,9 @@ const screenStyles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
     center: { flex: 1, alignItems: "center", justifyContent: "center" },
     list: { paddingHorizontal: 16, paddingBottom: 96, gap: 9 },
+    sectionHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingTop: 10, paddingBottom: 2 },
+    sectionTitle: { fontSize: 18, fontWeight: "600", letterSpacing: -0.3 },
+    sectionCount: { fontSize: 12, fontWeight: "700" },
     cartBarWrap: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 16, paddingBottom: 10 },
     cartBar: {
       borderRadius: 15,
@@ -504,6 +795,19 @@ const modalStyles = (theme: ReturnType<typeof useTheme>) =>
     },
     chipText: { fontSize: 14, fontWeight: "600" },
     chipPrice: { fontSize: 12, fontWeight: "500" },
+    textInput: {
+      borderWidth: 1.5,
+      borderRadius: 11,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      fontSize: 14,
+    },
+    addPersonBtn: {
+      paddingVertical: 12,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     optRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
     checkbox: {
       width: 22,

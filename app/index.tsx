@@ -74,8 +74,8 @@ export default function RootIndex() {
   }, []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#F6F1E6", alignItems: "center", justifyContent: "center" }}>
-      <ActivityIndicator color="#2C4031" size="large" />
+    <View style={{ flex: 1, backgroundColor: "#F1E8D6", alignItems: "center", justifyContent: "center" }}>
+      <ActivityIndicator color="#C1502E" size="large" />
     </View>
   );
 }

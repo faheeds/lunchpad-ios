@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * Connect — the tenant lookup step. Search-first: the customer types
  * their school or office's name and picks it from live results, the
  * same way the search results already worked here before. This
@@ -11,6 +12,18 @@
  * customer who has a link handy (or whose search doesn't turn up a
  * match) isn't stuck. Search is additive on top of that unchanged
  * fallback, not a replacement for it.
+=======
+ * Connect — the tenant code step. Reframed from a bureaucratic gate into
+ * a warm setup task: a clear heading, reassuring helper copy, and
+ * operator-neutral language (school OR office).
+ *
+ * Also offers live search-as-you-type: as the user types a restaurant
+ * name, slug, or pasted link, matching restaurants appear below the
+ * field. Tapping one runs the exact same connect flow as typing the
+ * code manually and hitting Continue — search is purely additive, the
+ * manual entry path is unchanged and always works even if search fails
+ * or returns nothing.
+>>>>>>> origin/main
  */
 
 import { useEffect, useRef, useState } from "react";

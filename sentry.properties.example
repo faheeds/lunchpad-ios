@@ -1,0 +1,25 @@
+# Example Sentry properties file for the LunchPad iOS app.
+#
+# The real `sentry.properties` (or the equivalent env vars in EAS secrets)
+# is required for native source-map + dSYM upload during EAS Build. It is
+# NEVER committed — it contains an auth token.
+#
+# On EAS, prefer setting these as EAS Build secrets rather than committing
+# a properties file:
+#   - SENTRY_AUTH_TOKEN   (org auth token with `project:releases` scope)
+#   - SENTRY_ORG          (e.g. `lunchpad`)
+#   - SENTRY_PROJECT      (e.g. `lunchpad-ios`)
+#
+# The JS-side Sentry SDK is initialized from `EXPO_PUBLIC_SENTRY_DSN`
+# (see `lib/sentry.ts`). That DSN is client-readable and safe to bake into
+# the app bundle. The auth token below is NOT — do not add it to
+# `EXPO_PUBLIC_*` or commit it.
+#
+# See:
+#   https://docs.sentry.io/platforms/react-native/manual-setup/expo/
+#   https://docs.expo.dev/eas/environment-variables/
+
+defaults.url=https://sentry.io/
+defaults.org=your-org-slug
+defaults.project=lunchpad-ios
+auth.token=YOUR_SENTRY_AUTH_TOKEN_HERE

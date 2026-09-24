@@ -26,18 +26,23 @@ import * as WebBrowser from "expo-web-browser";
 import * as Haptics from "expo-haptics";
 import {
   fetchWeeklyPlans,
+  fetchOrders,
   upsertWeeklyPlan,
   deleteWeeklyPlan,
   createWeeklyCheckout,
 } from "../../lib/api";
 import { formatPrice } from "../../lib/store";
+import { computeLineTotalCents } from "../../lib/pricing";
 import { useTheme } from "../../lib/theme";
 import type {
   MenuItem,
+  OrderHistoryItem,
   WeeklyDeliveryDate,
   WeeklyPlan,
   WeeklyPlansBundle,
 } from "../../lib/types";
+import { countDoneSlots } from "../../lib/weeklyPlanSlot";
+import { groupItemsByCategory } from "../../lib/groupByCategory";
 import { FoodImage } from "../../components/FoodImage";
 import { Screen, Card, Eyebrow, PrimaryButton, EmptyState } from "../../components/ui";
 
@@ -56,22 +61,21 @@ function getWeekdayFromISO(iso: string): number {
   return dow === 0 ? 7 : dow;
 }
 
-/** Per-meal price for a saved plan: the chosen size price (or the
- *  item's base price when unsized) plus any add-on deltas. */
+const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtShortDate(iso: string): string {
+  const d = new Date(iso);
+  return `${MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/** Per-meal price for a saved plan. Thin adapter around
+ *  `computeLineTotalCents` — returns 0 when the item is missing (e.g.
+ *  the day's menu removed it after the plan was saved). */
 function resolvePlanPrice(plan: WeeklyPlan, item: MenuItem | undefined): number {
   if (!item) return 0;
-  const addOnCost = item.options
-    .filter(
-      (o) =>
-        (o.optionType === "ADD" || o.optionType === "ADD_ON") &&
-        plan.additions.includes(o.name),
-    )
-    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
-  const sizePrice =
-    plan.size && item.sizes
-      ? item.sizes.find((sz) => sz.name === plan.size)?.priceCents
-      : undefined;
-  return (sizePrice ?? item.basePriceCents) + addOnCost;
+  return computeLineTotalCents(item, {
+    size: plan.size,
+    additions: plan.additions,
+  });
 }
 
 export default function WeeklyPlanScreen() {
@@ -87,6 +91,13 @@ export default function WeeklyPlanScreen() {
     queryKey: ["weekly-plans"],
     queryFn: fetchWeeklyPlans,
   });
+
+  const ordersQ = useQuery({
+    queryKey: ["orders"],
+    queryFn: fetchOrders,
+    retry: false,
+  });
+  const orders = ordersQ.data ?? [];
 
   const activeChildId = selectedChildId ?? data?.children[0]?.id ?? null;
 
@@ -164,6 +175,7 @@ export default function WeeklyPlanScreen() {
         weekday: (typeof ALL_WEEKDAYS)[number];
         date: WeeklyDeliveryDate;
         plans: WeeklyPlan[];
+        order: OrderHistoryItem | null;
       }>;
     return ALL_WEEKDAYS.flatMap((w) => {
       const date = data.deliveryDates.find(
@@ -171,9 +183,18 @@ export default function WeeklyPlanScreen() {
       );
       if (!date) return [];
       const plans = childPlans.filter((p) => p.weekday === w.num);
-      return [{ weekday: w, date, plans }];
+      const order =
+        orders.find(
+          (o) =>
+            o.parentChildId != null &&
+            o.parentChildId === activeChildId &&
+            o.deliveryDateId != null &&
+            o.deliveryDateId === date.id &&
+            o.status !== "CANCELLED",
+        ) ?? null;
+      return [{ weekday: w, date, plans, order }];
     });
-  }, [data, activeChild, childPlans]);
+  }, [data, activeChild, childPlans, orders, activeChildId]);
 
   const totalCents = useMemo(() => {
     if (!data) return 0;
@@ -194,6 +215,7 @@ export default function WeeklyPlanScreen() {
 
   const activePlanCount = data?.plans.length ?? 0;
   const childPlanCount = childPlans.length;
+  const childDoneCount = countDoneSlots(weekdaySlots);
 
   async function handleCheckout() {
     if (activePlanCount === 0) {
@@ -260,7 +282,7 @@ export default function WeeklyPlanScreen() {
     );
   }
 
-  const progress = weekdaySlots.length > 0 ? Math.min(1, childPlanCount / weekdaySlots.length) : 0;
+  const progress = weekdaySlots.length > 0 ? Math.min(1, childDoneCount / weekdaySlots.length) : 0;
   const activeFirstName = activeChild?.studentName.trim().split(/\s+/)[0];
 
   return (
@@ -280,7 +302,7 @@ export default function WeeklyPlanScreen() {
                 />
               </View>
               <Text style={[s.progressText, { color: theme.textSecondary }]}>
-                {childPlanCount} of {weekdaySlots.length} day{weekdaySlots.length === 1 ? "" : "s"}{" "}
+                {childDoneCount} of {weekdaySlots.length} day{weekdaySlots.length === 1 ? "" : "s"}{" "}
                 planned{activeFirstName ? ` for ${activeFirstName}` : ""}
               </Text>
             </>
@@ -312,6 +334,13 @@ export default function WeeklyPlanScreen() {
                   <Text style={[s.chipText, { color: on ? theme.textOnPrimary : theme.textPrimary }]}>
                     {c.studentName.trim().split(/\s+/)[0]}
                   </Text>
+                  <Text
+                    style={[s.chipSchool, { color: on ? theme.textOnPrimary : theme.textMuted }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {c.schoolName}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -332,15 +361,60 @@ export default function WeeklyPlanScreen() {
               </Text>
             </Card>
           ) : (
-            weekdaySlots.map(({ weekday: w, date, plans }) => (
+            weekdaySlots.map(({ weekday: w, date, plans, order }) => (
               <View key={w.num} style={s.daySlot}>
                 <View style={s.dayHeader}>
                   <View style={[s.dayChip, { backgroundColor: theme.dark }]}>
                     <Text style={[s.dayChipText, { color: theme.primary }]}>{w.label}</Text>
                   </View>
                   <Text style={[s.dayName, { color: theme.textPrimary }]}>{w.long}</Text>
+                  <Text style={[s.dayDate, { color: theme.textMuted }]}>{fmtShortDate(date.deliveryDate)}</Text>
                 </View>
-                {plans.map((plan) => {
+
+                {/* Ordered state \u2014 tap-through to order detail, no edit affordance */}
+                {order ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/orders/[orderId]",
+                        params: { orderId: order.id },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`View order for ${w.long}`}
+                  >
+                    <Card style={s.planRow}>
+                      {(() => {
+                        const firstItem = order.items[0];
+                        const menuMatch = firstItem
+                          ? date.menuItems.find((m) => m.name === firstItem.name)
+                          : undefined;
+                        return (
+                          <FoodImage
+                            uri={menuMatch?.imageUrl ?? null}
+                            seed={date.id}
+                            size={44}
+                            radius={10}
+                          />
+                        );
+                      })()}
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.slotName, { color: theme.textPrimary }]} numberOfLines={1}>
+                          {order.items.map((i) => i.name).join(", ")}
+                        </Text>
+                        <Text style={[s.slotPrice, { color: theme.textSecondary }]} numberOfLines={1}>
+                          Ordered \u00b7 {formatPrice(order.totalCents)}
+                        </Text>
+                      </View>
+                      <Ionicons name="checkmark-circle" size={22} color={theme.success} />
+                      <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+                    </Card>
+                  </TouchableOpacity>
+                ) : null}
+
+                {/* Draft plan rows \u2014 only when not already ordered */}
+                {!order ? plans.map((plan) => {
                   const item = date.menuItems.find((m) => m.id === plan.menuItemId);
                   const meta = [plan.size, plan.choice].filter(Boolean).join(" \u00b7 ");
                   const price = formatPrice(resolvePlanPrice(plan, item));
@@ -376,26 +450,30 @@ export default function WeeklyPlanScreen() {
                       </TouchableOpacity>
                     </Card>
                   );
-                })}
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={() => {
-                    if (!activeChildId) return;
-                    Haptics.selectionAsync().catch(() => {});
-                    setPickerOpen({ weekday: w.num, childId: activeChildId });
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    plans.length ? `Add another meal for ${w.long}` : `Add ${w.long} meal`
-                  }
-                >
-                  <View style={[s.addRow, { borderColor: theme.accent }]}>
-                    <Ionicons name="add-circle-outline" size={18} color={theme.accent} />
-                    <Text style={[s.addRowText, { color: theme.accent }]}>
-                      {plans.length ? "Add another meal" : `Add ${w.long}\u2019s meal`}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+                }) : null}
+
+                {/* Add row \u2014 hidden when already ordered */}
+                {!order ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (!activeChildId) return;
+                      Haptics.selectionAsync().catch(() => {});
+                      setPickerOpen({ weekday: w.num, childId: activeChildId });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      plans.length ? `Add another meal for ${w.long}` : `Add ${w.long} meal`
+                    }
+                  >
+                    <View style={[s.addRow, { borderColor: theme.accent }]}>
+                      <Ionicons name="add-circle-outline" size={18} color={theme.accent} />
+                      <Text style={[s.addRowText, { color: theme.accent }]}>
+                        {plans.length ? "Add another meal" : `Add ${w.long}\u2019s meal`}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ))
           )}
@@ -473,6 +551,14 @@ function ItemPickerModal({
   const [selectedAdditions, setSelectedAdditions] = useState<string[]>([]);
   const [selectedRemovals, setSelectedRemovals] = useState<string[]>([]);
 
+  // Group items by category, matching the single-day order screen's
+  // display -- computed before the early return below since hooks can't
+  // run conditionally. The server already sorts each date's menuItems by
+  // the restaurant's configured category order (same fix already applied
+  // to the per-date order screen's own endpoint), so grouping via
+  // insertion order naturally produces correctly-sequenced sections.
+  const sections = useMemo(() => groupItemsByCategory(deliveryDate?.menuItems ?? []), [deliveryDate]);
+
   if (!deliveryDate) return null;
 
   // ── Item list ──────────────────────────────────────────────────────────────
@@ -489,37 +575,42 @@ function ItemPickerModal({
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={m.list}>
-            {deliveryDate.menuItems.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setSelectedItem(item);
-                  setSelectedSize(item.sizes?.[0]?.name ?? null);
-                  setSelectedChoice(null);
-                  setSelectedAdditions([]);
-                  setSelectedRemovals([]);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${item.name}`}
-              >
-                <Card style={m.itemCard}>
-                  <FoodImage uri={item.imageUrl} seed={item.id} size={64} radius={12} />
-                  <View style={{ flex: 1, gap: 3 }}>
-                    <Text style={[m.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-                    {item.description ? (
-                      <Text style={[m.itemDesc, { color: theme.textSecondary }]} numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    ) : null}
-                    <Text style={[m.itemPrice, { color: theme.primary }]}>
-                      {formatPrice(item.basePriceCents)}
-                    </Text>
-                  </View>
-                </Card>
-              </TouchableOpacity>
+            {sections.map((section) => (
+              <View key={section.title}>
+                <Text style={[m.sectionHeader, { color: theme.textMuted }]}>{section.title}</Text>
+                {section.data.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setSelectedItem(item);
+                      setSelectedSize(item.sizes?.[0]?.name ?? null);
+                      setSelectedChoice(null);
+                      setSelectedAdditions([]);
+                      setSelectedRemovals([]);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Select ${item.name}`}
+                  >
+                    <Card style={m.itemCard}>
+                      <FoodImage uri={item.imageUrl} seed={item.id} size={64} radius={12} />
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <Text style={[m.itemName, { color: theme.textPrimary }]} numberOfLines={2}>
+                          {item.name}
+                        </Text>
+                        {item.description ? (
+                          <Text style={[m.itemDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                            {item.description}
+                          </Text>
+                        ) : null}
+                        <Text style={[m.itemPrice, { color: theme.primary }]}>
+                          {formatPrice(item.basePriceCents)}
+                        </Text>
+                      </View>
+                    </Card>
+                  </TouchableOpacity>
+                ))}
+              </View>
             ))}
           </ScrollView>
         </View>
@@ -538,13 +629,11 @@ function ItemPickerModal({
   const removals = selectedItem.options.filter(
     (o) => o.optionType === "REMOVAL" || o.optionType === "REMOVE",
   );
-  const extraCents = additions
-    .filter((o) => selectedAdditions.includes(o.name))
-    .reduce((acc, o) => acc + o.priceDeltaCents, 0);
-  const resolvedBase = hasSize
-    ? (sizes.find((sz) => sz.name === selectedSize) ?? sizes[0]).priceCents
-    : selectedItem.basePriceCents;
-  const total = resolvedBase + extraCents;
+  // Per-unit price — canonical formula lives in lib/pricing.ts.
+  const total = computeLineTotalCents(selectedItem, {
+    size: selectedSize,
+    additions: selectedAdditions,
+  });
   const canConfirm =
     (!hasRequiredChoice || selectedChoice !== null) && (!hasSize || selectedSize !== null);
 
@@ -735,9 +824,10 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     fill: { height: 6, borderRadius: 99 },
     progressText: { fontSize: 12, marginTop: 6 },
 
-    chipRow: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
-    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 99, borderWidth: 1 },
+    chipRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
+    chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
     chipText: { fontSize: 13, fontWeight: "600" },
+    chipSchool: { fontSize: 10, fontWeight: "500", marginTop: 1 },
 
     scroll: { paddingHorizontal: 16, paddingBottom: 16, gap: 10 },
 
@@ -772,6 +862,7 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     dayChip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 8 },
     dayChipText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
     dayName: { fontSize: 14, fontWeight: "700" },
+    dayDate: { fontSize: 12, marginLeft: "auto" as const },
     planRow: { flexDirection: "row", alignItems: "center", gap: 11, padding: 10 },
     addRow: {
       flexDirection: "row",
@@ -812,6 +903,14 @@ const modalStyles = (theme: ReturnType<typeof useTheme>) =>
     title: { fontSize: 19, fontWeight: "600", letterSpacing: -0.3 },
     list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
     itemCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10 },
+    sectionHeader: {
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      paddingTop: 14,
+      paddingBottom: 6,
+    },
     itemName: { fontSize: 14, fontWeight: "700" },
     itemDesc: { fontSize: 12, lineHeight: 16 },
     itemPrice: { fontSize: 14, fontWeight: "700", marginTop: 1 },
