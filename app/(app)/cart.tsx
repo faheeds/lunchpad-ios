@@ -35,6 +35,8 @@ import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice, isDraftChildId } from "../../lib/store";
 import { fetchAccount, fetchDeliveryDates, createCartCheckout, addChild } from "../../lib/api";
+import { buildCartKey } from "../../lib/types";
+import { computeLineTotalCents } from "../../lib/pricing";
 import { useTheme } from "../../lib/theme";
 import { STANDARD_GRADES } from "../../lib/grades";
 import { FoodImage } from "../../components/FoodImage";
@@ -65,6 +67,7 @@ export default function CartScreen() {
 
   const items = useCart((st) => st.items);
   const drafts = useCart((st) => st.drafts);
+  const addItem = useCart((st) => st.addItem);
   // Computed locally from `items` (already a stable, properly-subscribed
   // reference) via useMemo, rather than calling the store's schoolIds()
   // selector directly in useCart(). schoolIds() returns a brand-new array
@@ -105,6 +108,23 @@ export default function CartScreen() {
   // for the header subtitle in the common single-school case.
   const deliveryDate = items[0] ? deliveryDateById.get(items[0].deliveryDateId) : undefined;
   const isOffice = deliveryDate?.school.locationType === "OFFICE";
+
+  // One-tap upsell rail -- scoped to items[0]'s delivery date/school, same
+  // simplification as the office-vs-school wording above. A multi-school
+  // cart still gets upsell offers, just only for the first school; adding
+  // a second rail per school isn't worth the extra screen space this
+  // solves for a rare case.
+  const defaultUpsellChildId = items[0]?.parentChildId;
+  const upsellItems = useMemo(() => {
+    if (!deliveryDate) return [];
+    return deliveryDate.menuItems.filter(
+      (m) =>
+        m.isUpsell &&
+        !(m.requiredChoices && m.requiredChoices.length > 0) &&
+        !(m.sizes && m.sizes.length > 0) &&
+        !deliveryDate.soldOut.includes(m.id),
+    );
+  }, [deliveryDate]);
 
   // The one shared roster every item's "Assign to" picker reads from --
   // saved children plus anyone added as a draft during this cart
@@ -491,39 +511,9 @@ export default function CartScreen() {
               )}
             </Card>
 
-            {/* Promo code -- optional; any eligible auto-discount applies
-                either way. Kept as its own small card, separate from the
-                item list, since it's a one-time input for the whole
-                order rather than something tied to any single line. */}
-            <Card style={s.card}>
-              <Eyebrow>Promo code</Eyebrow>
-              <View style={s.promoRow}>
-                <TextInput
-                  style={[s.input, { flex: 1 }]}
-                  value={promoCode}
-                  onChangeText={setPromoCode}
-                  placeholder="Optional code"
-                  placeholderTextColor={theme.textMuted}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
-                {promoCode.length > 0 ? (
-                  <TouchableOpacity
-                    onPress={() => setPromoCode("")}
-                    style={s.promoClearBtn}
-                    hitSlop={8}
-                    accessibilityLabel="Clear promo code"
-                  >
-                    <Ionicons name="close" size={16} color={theme.textMuted} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              <Text style={[s.promoHint, { color: theme.textMuted }]}>
-                Applied at checkout -- the total on the payment screen will reflect it.
-              </Text>
-            </Card>
-
-            {/* Parent / receipt */}
+            {/* Parent / receipt -- captured before the upsell rail below,
+                so nothing about checking out is still unresolved when the
+                upsell offer appears. */}
             <Card style={s.card}>
               {editingParent || !nameOk || !emailOk ? (
                 <>
@@ -566,6 +556,120 @@ export default function CartScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+            </Card>
+
+            {/* Upsell rail -- simple one-tap sides/desserts (no size or
+                required-choice picker), defaulting to whoever the first
+                cart item for this delivery date is already assigned to.
+                Shown after the order + receipt info is settled, before
+                the optional promo code. */}
+            {upsellItems.length > 0 && deliveryDate && defaultUpsellChildId ? (
+              <Card style={[s.card, { paddingRight: 0 }]}>
+                <View style={{ paddingRight: 14 }}>
+                  <Eyebrow>Add a little something?</Eyebrow>
+                  <Text style={[s.upsellHint, { color: theme.textMuted }]}>
+                    One tap -- no need to reopen the menu
+                  </Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.upsellRail} contentContainerStyle={{ gap: 10, paddingRight: 14 }}>
+                  {upsellItems.map((upsellItem) => {
+                    const cartKey = buildCartKey(upsellItem.id, undefined, undefined, [], [], deliveryDate.id, defaultUpsellChildId);
+                    const existing = items.find((i) => i.cartKey === cartKey);
+                    const qty = existing?.quantity ?? 0;
+                    return (
+                      <View key={upsellItem.id} style={s.upsellItem}>
+                        <View style={{ position: "relative" }}>
+                          <FoodImage uri={upsellItem.imageUrl} seed={upsellItem.id} size={92} radius={13} />
+                          {qty === 0 ? (
+                            <TouchableOpacity
+                              onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                addItem(
+                                  {
+                                    menuItemId: upsellItem.id,
+                                    itemName: upsellItem.name,
+                                    basePriceCents: upsellItem.basePriceCents,
+                                    additions: [],
+                                    removals: [],
+                                    lineTotalCents: computeLineTotalCents(upsellItem),
+                                    parentChildId: defaultUpsellChildId,
+                                  },
+                                  deliveryDate.id,
+                                  deliveryDate.schoolId,
+                                );
+                              }}
+                              style={[s.upsellAddFab, { backgroundColor: theme.primary, borderColor: theme.surface }]}
+                              hitSlop={6}
+                              accessibilityLabel={`Add ${upsellItem.name}`}
+                            >
+                              <Ionicons name="add" size={17} color={theme.textOnPrimary} />
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={[s.upsellStepper, { backgroundColor: theme.primary, borderColor: theme.surface }]}>
+                              <TouchableOpacity
+                                onPress={() => decrementItem(cartKey)}
+                                style={s.upsellStepperBtn}
+                                hitSlop={6}
+                                accessibilityLabel={qty > 1 ? `Decrease ${upsellItem.name}` : `Remove ${upsellItem.name}`}
+                              >
+                                <Ionicons name={qty > 1 ? "remove" : "trash-outline"} size={13} color={theme.textOnPrimary} />
+                              </TouchableOpacity>
+                              <Text style={[s.upsellStepperQty, { color: theme.textOnPrimary }]}>{qty}</Text>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                  incrementItem(cartKey);
+                                }}
+                                style={s.upsellStepperBtn}
+                                hitSlop={6}
+                                accessibilityLabel={`Add another ${upsellItem.name}`}
+                              >
+                                <Ionicons name="add" size={13} color={theme.textOnPrimary} />
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[s.upsellName, { color: qty > 0 ? theme.primary : theme.textPrimary }]} numberOfLines={1}>
+                          {upsellItem.name}
+                        </Text>
+                        <Text style={[s.upsellPrice, { color: theme.textMuted }]}>{formatPrice(upsellItem.basePriceCents)}</Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </Card>
+            ) : null}
+
+            {/* Promo code -- optional; any eligible auto-discount applies
+                either way. Kept as its own small card, separate from the
+                item list, since it's a one-time input for the whole
+                order rather than something tied to any single line. */}
+            <Card style={s.card}>
+              <Eyebrow>Promo code</Eyebrow>
+              <View style={s.promoRow}>
+                <TextInput
+                  style={[s.input, { flex: 1 }]}
+                  value={promoCode}
+                  onChangeText={setPromoCode}
+                  placeholder="Optional code"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                {promoCode.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => setPromoCode("")}
+                    style={s.promoClearBtn}
+                    hitSlop={8}
+                    accessibilityLabel="Clear promo code"
+                  >
+                    <Ionicons name="close" size={16} color={theme.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <Text style={[s.promoHint, { color: theme.textMuted }]}>
+                Applied at checkout -- the total on the payment screen will reflect it.
+              </Text>
             </Card>
 
             <View style={{ height: 8 }} />
@@ -763,6 +867,22 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
       fontSize: 15,
       color: theme.textPrimary,
     },
+
+    upsellHint: { fontSize: 11.5, marginTop: 1, marginBottom: 2 },
+    upsellRail: { marginTop: 4 },
+    upsellItem: { width: 92 },
+    upsellAddFab: {
+      position: "absolute", right: -6, bottom: -8, width: 30, height: 30, borderRadius: 15,
+      borderWidth: 3, alignItems: "center", justifyContent: "center",
+    },
+    upsellStepper: {
+      position: "absolute", right: -8, bottom: -10, borderRadius: 99, borderWidth: 3,
+      flexDirection: "row", alignItems: "center", paddingHorizontal: 3, paddingVertical: 3, gap: 1,
+    },
+    upsellStepperBtn: { width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+    upsellStepperQty: { fontSize: 11.5, fontWeight: "800", minWidth: 14, textAlign: "center" },
+    upsellName: { fontSize: 12.5, fontWeight: "700", marginTop: 6 },
+    upsellPrice: { fontSize: 11.5, fontWeight: "600", marginTop: 1 },
 
     promoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     promoClearBtn: { padding: 6 },
