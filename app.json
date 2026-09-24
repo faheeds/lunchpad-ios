@@ -2,7 +2,7 @@
   "expo": {
     "name": "LunchPad",
     "slug": "lunchpad",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "us.lunchpad.app",
-      "buildNumber": "50",
+      "buildNumber": "51",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
