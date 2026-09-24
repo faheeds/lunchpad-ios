@@ -1,4 +1,18 @@
 /**
+<<<<<<< HEAD
+ * Connect — the tenant lookup step. Search-first: the customer types
+ * their school or office's name and picks it from live results, the
+ * same way the search results already worked here before. This
+ * replaces the old "enter the code or link your school/office gave
+ * you" framing, which asked people to go find and paste something
+ * before they could even see what's on offer.
+ *
+ * Typing a full code, slug, or link still works too — hitting Continue
+ * runs it through the same `validateSchoolCode` lookup as always, so a
+ * customer who has a link handy (or whose search doesn't turn up a
+ * match) isn't stuck. Search is additive on top of that unchanged
+ * fallback, not a replacement for it.
+=======
  * Connect — the tenant code step. Reframed from a bureaucratic gate into
  * a warm setup task: a clear heading, reassuring helper copy, and
  * operator-neutral language (school OR office).
@@ -9,6 +23,7 @@
  * code manually and hitting Continue — search is purely additive, the
  * manual entry path is unchanged and always works even if search fails
  * or returns nothing.
+>>>>>>> origin/main
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -98,7 +113,7 @@ export default function ConnectScreen() {
       const { valid, baseUrl } = await validateSchoolCode(trimmed);
       if (!valid) {
         setError(
-          "We couldn't find that. Try the full web address your school or office gave you — e.g. lunch.yourdomain.com.",
+          "We couldn't find that. Check the spelling, or paste the link your school or office gave you.",
         );
         return;
       }
@@ -135,16 +150,16 @@ export default function ConnectScreen() {
       >
         <SafeAreaView style={styles.fill}>
           <View style={styles.content}>
-            <BrandMark size={48} radius={13} />
+            <BrandMark size={48} radius={13} forceLunchPad />
             <Text style={[styles.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
-              Connect to your{"\n"}lunch program
+              Find your{"\n"}lunch program
             </Text>
             <Text style={[styles.sub, { color: theme.textSecondary }]}>
-              Your school or office sent you a code or a web link. Enter it once — we&apos;ll remember it.
+              Search for your school or office to get started.
             </Text>
 
             <View style={styles.field}>
-              <Text style={[styles.label, { color: theme.textMuted }]}>CODE OR LINK</Text>
+              <Text style={[styles.label, { color: theme.textMuted }]}>SCHOOL OR OFFICE</Text>
               <TextInput
                 style={[
                   styles.input,
@@ -159,12 +174,11 @@ export default function ConnectScreen() {
                   setCode(t);
                   setError("");
                 }}
-                placeholder="e.g. lunch.yourschool.com"
+                placeholder="Search by name"
                 placeholderTextColor={theme.textMuted}
-                autoCapitalize="none"
+                autoCapitalize="words"
                 autoCorrect={false}
                 autoComplete="off"
-                keyboardType="url"
                 returnKeyType="go"
                 onSubmitEditing={handleContinue}
               />
