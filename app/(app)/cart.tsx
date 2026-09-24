@@ -119,6 +119,13 @@ export default function CartScreen() {
   const [parentEmail, setParentEmail] = useState(account?.email ?? "");
   const [editingParent, setEditingParent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Promo code -- optional, applied at checkout time. The server also
+  // applies any eligible auto-discounts (welcome offer, Teacher/Admin,
+  // etc.) regardless of whether a code is entered here; an unrecognized
+  // code is silently ignored rather than blocking checkout (see
+  // /api/mobile/native/cart-checkout), so there's no inline validation
+  // here -- the parent finds out the real total on the Stripe screen.
+  const [promoCode, setPromoCode] = useState("");
 
   // Which item's "+ Add a child" modal is open, if any. Null = closed.
   const [addingForCartKey, setAddingForCartKey] = useState<string | null>(null);
@@ -270,6 +277,7 @@ export default function CartScreen() {
             removals: i.removals,
           }));
         }),
+        code: promoCode.trim() || undefined,
       });
 
       const authResult = await WebBrowser.openAuthSessionAsync(result.checkoutUrl, "lunchpad://checkout/success");
@@ -481,6 +489,38 @@ export default function CartScreen() {
                   );
                 },
               )}
+            </Card>
+
+            {/* Promo code -- optional; any eligible auto-discount applies
+                either way. Kept as its own small card, separate from the
+                item list, since it's a one-time input for the whole
+                order rather than something tied to any single line. */}
+            <Card style={s.card}>
+              <Eyebrow>Promo code</Eyebrow>
+              <View style={s.promoRow}>
+                <TextInput
+                  style={[s.input, { flex: 1 }]}
+                  value={promoCode}
+                  onChangeText={setPromoCode}
+                  placeholder="Optional code"
+                  placeholderTextColor={theme.textMuted}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                {promoCode.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => setPromoCode("")}
+                    style={s.promoClearBtn}
+                    hitSlop={8}
+                    accessibilityLabel="Clear promo code"
+                  >
+                    <Ionicons name="close" size={16} color={theme.textMuted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <Text style={[s.promoHint, { color: theme.textMuted }]}>
+                Applied at checkout -- the total on the payment screen will reflect it.
+              </Text>
             </Card>
 
             {/* Parent / receipt */}
@@ -723,6 +763,10 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
       fontSize: 15,
       color: theme.textPrimary,
     },
+
+    promoRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    promoClearBtn: { padding: 6 },
+    promoHint: { fontSize: 11.5, marginTop: 2 },
 
     parentCollapsed: { flexDirection: "row", alignItems: "center", gap: 12 },
     parentText: { fontSize: 14, fontWeight: "700", marginTop: 4 },

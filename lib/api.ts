@@ -360,10 +360,10 @@ export const upsertWeeklyPlan = (data: {
 export const deleteWeeklyPlan = (planId: string) =>
   apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${encodeURIComponent(planId)}`);
 
-export const createWeeklyCheckout = () =>
+export const createWeeklyCheckout = (code?: string) =>
   apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>(
     "/api/mobile/native/weekly-checkout",
-    {},
+    code ? { code } : {},
   );
 
 export const createOrder = (data: {
@@ -398,6 +398,9 @@ export const createCartCheckout = (data: {
     additions?: string[];
     removals?: string[];
   }[];
+  /** Optional promo code entered at checkout. Auto-discounts (welcome
+   *  offer, Teacher/Admin, etc.) apply regardless of this field. */
+  code?: string;
 }) => apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>("/api/mobile/native/cart-checkout", data);
 
 /** Permanently deletes the signed-in parent's account (App Store 5.1.1(v)). */
