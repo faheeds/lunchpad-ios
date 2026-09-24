@@ -49,6 +49,12 @@ export type MenuItem = {
    *  (`computeLineTotalCents`) — the single source of truth for
    *  every price shown in the app. */
   sizes?: MenuItemSize[];
+  /** When true, this item is eligible for the cart's "Add a little
+   *  something?" upsell rail (cart.tsx). Only present on the
+   *  delivery-dates response. An item with `requiredChoices` or `sizes`
+   *  is never actually shown there even if this is true -- a one-tap
+   *  add has nowhere to resolve a picker. */
+  isUpsell?: boolean;
 };
 
 /** Menu tab response — grouped by category. */
