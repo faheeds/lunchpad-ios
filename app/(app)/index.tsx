@@ -17,6 +17,7 @@ import {
   RefreshControl,
   SafeAreaView,
   TextInput,
+  Modal,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
@@ -25,6 +26,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDeliveryDates, fetchAccount, fetchWeeklyPlans, fetchOrders, notifyMe } from "../../lib/api";
 import { pickNextDate } from "../../lib/nextDate";
+import { groupDatesByDay, earliestCutoff } from "../../lib/groupDatesByDay";
 import { useTheme } from "../../lib/theme";
 import {
   getCarouselPhotos,
@@ -320,6 +322,10 @@ export default function HomeScreen() {
   const ordersQ = useQuery({ queryKey: ["orders"], queryFn: fetchOrders, retry: false });
 
   const dates = datesQ.data ?? [];
+  const groupedDates = groupDatesByDay(dates);
+  const [locationPickerGroup, setLocationPickerGroup] = useState<
+    (typeof groupedDates)[number] | null
+  >(null);
   const children = accountQ.data?.children ?? [];
   const nextDate = pickNextDate(dates, children.map((c) => c.schoolId));
   const firstName = accountQ.data?.name?.trim().split(/\s+/)[0];
@@ -340,6 +346,23 @@ export default function HomeScreen() {
     const params: { dateId: string; preselectedItemId?: string } = { dateId: id };
     if (preselectedItemId) params.preselectedItemId = preselectedItemId;
     router.push({ pathname: "/(app)/order/[dateId]", params });
+  }
+
+  // A day with a single location goes straight to that date's order
+  // screen, same as before. A day with more than one location (e.g. two
+  // campuses delivering the same day) prompts for which one first,
+  // instead of showing them as separate "Upcoming dates" cards.
+  function handleDayPress(group: (typeof groupedDates)[number]) {
+    if (group.entries.length === 1) {
+      goToDate(group.entries[0].id);
+    } else {
+      setLocationPickerGroup(group);
+    }
+  }
+
+  function chooseLocation(id: string) {
+    setLocationPickerGroup(null);
+    goToDate(id);
   }
 
   function refreshAll() {
@@ -520,46 +543,136 @@ export default function HomeScreen() {
             </Card>
           </TouchableOpacity>
 
-          {/* Upcoming dates */}
+          {/* Upcoming dates — one card per calendar day, even when several
+              locations deliver that day (see lib/groupDatesByDay.ts) */}
           <SectionTitle>Upcoming dates</SectionTitle>
-          {dates.length === 0 ? (
+          {groupedDates.length === 0 ? (
             <UpcomingDatesEmpty theme={theme} />
           ) : (
-            dates.map((d) => (
-              <TouchableOpacity
-                key={d.id}
-                activeOpacity={0.85}
-                onPress={() => goToDate(d.id)}
-                accessibilityRole="button"
-                accessibilityLabel={`${fmtLong(d.deliveryDate)}, ${d.menuItems.length} dishes`}
-              >
-                <Card style={s.dateCard}>
-                  <FoodImage uri={d.menuItems[0]?.imageUrl} seed={d.id} size={62} radius={13} />
-                  <View style={{ flex: 1, gap: 4 }}>
-                    <Text style={[s.dateTitle, { color: theme.textPrimary }]} numberOfLines={1}>
-                      {fmtLong(d.deliveryDate)}
-                    </Text>
-                    <Text style={[s.dateSub, { color: theme.textMuted }]} numberOfLines={1}>
-                      {d.school.name} · {d.menuItems.length} dish
-                      {d.menuItems.length === 1 ? "" : "es"}
-                    </Text>
-                    <Pill
-                      label={`Order by ${fmtCutoff(d.cutoffAt)}`}
-                      tone={hoursUntil(d.cutoffAt) < 24 ? "urgent" : "neutral"}
+            groupedDates.map((group) => {
+              const multiLocation = group.entries.length > 1;
+              const cutoff = earliestCutoff(group.entries);
+              const firstWithPhoto = group.entries.find((e) => e.menuItems[0]?.imageUrl);
+              const subtitle = multiLocation
+                ? `${group.entries.length} locations available`
+                : `${group.entries[0].school.name} · ${group.entries[0].menuItems.length} dish${
+                    group.entries[0].menuItems.length === 1 ? "" : "es"
+                  }`;
+              return (
+                <TouchableOpacity
+                  key={group.dayKey}
+                  activeOpacity={0.85}
+                  onPress={() => handleDayPress(group)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${fmtLong(group.entries[0].deliveryDate)}${
+                    multiLocation ? `, ${group.entries.length} locations` : ""
+                  }`}
+                >
+                  <Card style={s.dateCard}>
+                    <FoodImage
+                      uri={firstWithPhoto?.menuItems[0]?.imageUrl}
+                      seed={group.dayKey}
+                      size={62}
+                      radius={13}
                     />
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
-                </Card>
-              </TouchableOpacity>
-            ))
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={[s.dateTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                        {fmtLong(group.entries[0].deliveryDate)}
+                      </Text>
+                      <Text style={[s.dateSub, { color: theme.textMuted }]} numberOfLines={1}>
+                        {subtitle}
+                      </Text>
+                      <Pill
+                        label={multiLocation ? `Earliest cutoff ${fmtCutoff(cutoff)}` : `Order by ${fmtCutoff(cutoff)}`}
+                        tone={hoursUntil(cutoff) < 24 ? "urgent" : "neutral"}
+                      />
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+                  </Card>
+                </TouchableOpacity>
+              );
+            })
           )}
 
           <View style={{ height: 8 }} />
         </ScrollView>
       </SafeAreaView>
+
+      {/* Location picker — shown only when a day has more than one
+          delivery location to choose between */}
+      {locationPickerGroup ? (
+        <Modal
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setLocationPickerGroup(null)}
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: theme.dark }}>
+            <View style={pickerStyles.handleRow}>
+              <View style={{ width: 32 }} />
+              <View style={[pickerStyles.grabber, { backgroundColor: theme.border }]} />
+              <TouchableOpacity
+                onPress={() => setLocationPickerGroup(null)}
+                accessibilityLabel="Close"
+                hitSlop={8}
+                style={{ width: 32, alignItems: "flex-end" }}
+              >
+                <Ionicons name="close" size={22} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={pickerStyles.header}>
+              <Text
+                style={[pickerStyles.title, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}
+              >
+                {fmtLong(locationPickerGroup.entries[0].deliveryDate)}
+              </Text>
+              <Text style={[pickerStyles.subtitle, { color: theme.textMuted }]}>
+                Choose a location
+              </Text>
+            </View>
+
+            <ScrollView contentContainerStyle={pickerStyles.scroll}>
+              {locationPickerGroup.entries.map((e) => (
+                <TouchableOpacity key={e.id} activeOpacity={0.85} onPress={() => chooseLocation(e.id)}>
+                  <Card style={pickerStyles.option}>
+                    <View style={{ flex: 1, gap: 3 }}>
+                      <Text style={[pickerStyles.optionTitle, { color: theme.textPrimary }]}>
+                        {e.school.name}
+                      </Text>
+                      <Text style={[pickerStyles.optionSub, { color: theme.textMuted }]}>
+                        Order by {fmtCutoff(e.cutoffAt)} · {e.menuItems.length} dish
+                        {e.menuItems.length === 1 ? "" : "es"}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+                  </Card>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      ) : null}
     </Screen>
   );
 }
+
+const pickerStyles = StyleSheet.create({
+  handleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  grabber: { width: 36, height: 4, borderRadius: 2 },
+  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4, gap: 3 },
+  title: { fontSize: 20, fontWeight: "600", letterSpacing: -0.3 },
+  subtitle: { fontSize: 13.5 },
+  scroll: { padding: 16, gap: 10 },
+  option: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
+  optionTitle: { fontSize: 15, fontWeight: "700" },
+  optionSub: { fontSize: 12.5 },
+});
 
 const styles = (theme: ReturnType<typeof useTheme>) =>
   StyleSheet.create({
