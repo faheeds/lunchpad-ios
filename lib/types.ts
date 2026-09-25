@@ -55,6 +55,13 @@ export type MenuItem = {
    *  is never actually shown there even if this is true -- a one-tap
    *  add has nowhere to resolve a picker. */
   isUpsell?: boolean;
+  /** Operator-curated pick for photo carousels -- mirrors the web
+   *  homepage's "This Week's Menu" grid and drives which photos the iOS
+   *  home screen's hero carousel shows (see lib/heroCarousel.ts). Only
+   *  present on the delivery-dates response. */
+  featuredOnLanding?: boolean;
+  /** Ordering among featuredOnLanding items only. Ignored otherwise. */
+  sortOrder?: number;
 };
 
 /** Menu tab response — grouped by category. */
