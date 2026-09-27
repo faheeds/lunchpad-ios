@@ -137,7 +137,17 @@ export default function CartScreen() {
 
   const [parentName, setParentName] = useState(account?.name ?? "");
   const [parentEmail, setParentEmail] = useState(account?.email ?? "");
-  const [editingParent, setEditingParent] = useState(false);
+  // Whether the "Receipt to" name/email fields are shown as editable
+  // inputs vs. a collapsed summary. Deliberately NOT derived from
+  // nameOk/emailOk in the render below -- it used to be, and that made
+  // the fields snap shut mid-keystroke: nameOk flips true the instant the
+  // customer types a 2nd character, so if email was already valid the
+  // whole "show inputs" condition went false while they were still
+  // typing their name. Now it's set once when the account loads (open
+  // if there's nothing usable saved yet, collapsed if there is) and only
+  // changes after that from an explicit action (tapping "Edit", or a
+  // failed-validation Alert forcing it back open).
+  const [editingParent, setEditingParent] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   // Promo code -- optional, applied at checkout time. The server also
   // applies any eligible auto-discounts (welcome offer, Teacher/Admin,
@@ -220,6 +230,14 @@ export default function CartScreen() {
       initedRef.current = true;
       if (account.name) setParentName(account.name);
       if (account.email) setParentEmail(account.email);
+      // Start collapsed only if the account already has a usable saved
+      // name + email -- otherwise leave the inputs open so there's
+      // something to fill in. This check runs once, against the SAVED
+      // account values, not against whatever's being typed live, which
+      // is what fixes the mid-typing collapse.
+      const hasName = (account.name ?? "").trim().length >= 2;
+      const hasEmail = /^\S+@\S+\.\S+$/.test((account.email ?? "").trim());
+      setEditingParent(!(hasName && hasEmail));
     }
   }, [account]);
 
@@ -515,7 +533,7 @@ export default function CartScreen() {
                 so nothing about checking out is still unresolved when the
                 upsell offer appears. */}
             <Card style={s.card}>
-              {editingParent || !nameOk || !emailOk ? (
+              {editingParent ? (
                 <>
                   <Eyebrow>Receipt to</Eyebrow>
                   <Labeled label="Your name">
