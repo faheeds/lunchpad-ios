@@ -24,6 +24,7 @@ import {
   fetchOrders,
   fetchDeliveryDates,
   apiDelete,
+  fetchCancelQuote,
   modifyOrder,
   type ModifyOrderItem,
 } from "../../../lib/api";
@@ -41,7 +42,7 @@ import {
   type ModifyPlan,
   type MatchedItem,
 } from "../../../lib/modify";
-import type { DeliveryDateWithMenu, OrderHistoryItem } from "../../../lib/types";
+import type { CancelQuote, DeliveryDateWithMenu, OrderHistoryItem } from "../../../lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -185,9 +186,29 @@ export default function OrderDetail() {
   async function handleCancel() {
     if (!order) return;
 
+    // Ask the server what will actually be refunded. If cancelling this day
+    // makes a later day lose its multi-day discount, that discount is kept
+    // from the refund, and we say so (with the exact amount) before the
+    // parent confirms. Best effort: on any failure fall back to the plain
+    // confirmation rather than blocking the cancel.
+    let quote: CancelQuote | null = null;
+    try {
+      quote = await fetchCancelQuote(order.id);
+    } catch {
+      quote = null;
+    }
+    const heldBack =
+      quote && quote.withheldCents > 0
+        ? `\n\nYour multi-day savings on a later day this week depend on this order, so ${formatPrice(
+            quote.withheldCents,
+          )} of ${formatPrice(quote.totalCents)} is kept to cover that discount. You'll be refunded ${formatPrice(
+            quote.refundCents,
+          )}. Cancel the later day too if you don't want it.`
+        : "";
+
     Alert.alert(
       "Cancel order",
-      `Are you sure you want to cancel order #${order.orderNumber.slice(-6)}?`,
+      `Are you sure you want to cancel order #${order.orderNumber.slice(-6)}?${heldBack}`,
       [
         { text: "Keep order", style: "cancel" },
         {
@@ -304,9 +325,16 @@ export default function OrderDetail() {
                 {formatDate(order.createdAt)}
               </Text>
             </View>
-            <Text style={[styles.totalAmount, { color: theme.textPrimary }]}>
-              {formatPrice(order.totalCents)}
-            </Text>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={[styles.totalAmount, { color: theme.textPrimary }]}>
+                {formatPrice(order.totalCents)}
+              </Text>
+              {(order.discountCents ?? 0) > 0 && (
+                <Text style={{ color: theme.success, fontSize: 13, fontWeight: "600", marginTop: 2 }}>
+                  Saved {formatPrice(order.discountCents ?? 0)}
+                </Text>
+              )}
+            </View>
           </View>
         </View>
 

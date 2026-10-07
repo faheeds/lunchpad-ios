@@ -30,11 +30,13 @@ import {
   upsertWeeklyPlan,
   deleteWeeklyPlan,
   createWeeklyCheckout,
+  fetchWeeklyCheckoutPreview,
 } from "../../lib/api";
 import { formatPrice } from "../../lib/store";
 import { computeLineTotalCents } from "../../lib/pricing";
 import { useTheme } from "../../lib/theme";
 import type {
+  WeekScope,
   MenuItem,
   OrderHistoryItem,
   WeeklyDeliveryDate,
@@ -87,10 +89,16 @@ export default function WeeklyPlanScreen() {
   const [submitting, setSubmitting] = useState(false);
   const s = styles(theme);
 
+  // One week at a time (this week / next week), mirroring the web planner.
+  // The server falls back if the requested week has nothing open, so the
+  // week actually shown comes back in `data.week`.
+  const [requestedWeek, setRequestedWeek] = useState<WeekScope>("next");
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["weekly-plans"],
-    queryFn: fetchWeeklyPlans,
+    queryKey: ["weekly-plans", requestedWeek],
+    queryFn: () => fetchWeeklyPlans(requestedWeek),
   });
+  const weekScope: WeekScope = data?.week?.scope ?? requestedWeek;
+  const weeklyKey = ["weekly-plans", requestedWeek] as const;
 
   const ordersQ = useQuery({
     queryKey: ["orders"],
@@ -108,8 +116,8 @@ export default function WeeklyPlanScreen() {
   const upsertMutation = useMutation({
     mutationFn: upsertWeeklyPlan,
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey: ["weekly-plans"] });
-      const prev = queryClient.getQueryData<WeeklyPlansBundle>(["weekly-plans"]);
+      await queryClient.cancelQueries({ queryKey: weeklyKey });
+      const prev = queryClient.getQueryData<WeeklyPlansBundle>(weeklyKey);
       if (prev) {
         const child = prev.children.find((c) => c.id === vars.parentChildId);
         const date = child
@@ -132,7 +140,7 @@ export default function WeeklyPlanScreen() {
           removals: vars.removals ?? [],
           isActive: true,
         };
-        queryClient.setQueryData<WeeklyPlansBundle>(["weekly-plans"], {
+        queryClient.setQueryData<WeeklyPlansBundle>(weeklyKey, {
           ...prev,
           plans: [...prev.plans, optimistic],
         });
@@ -140,17 +148,17 @@ export default function WeeklyPlanScreen() {
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["weekly-plans"], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(weeklyKey, ctx.prev);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
   });
   const deleteMutation = useMutation({
     mutationFn: deleteWeeklyPlan,
     onMutate: async (planId) => {
-      await queryClient.cancelQueries({ queryKey: ["weekly-plans"] });
-      const prev = queryClient.getQueryData<WeeklyPlansBundle>(["weekly-plans"]);
+      await queryClient.cancelQueries({ queryKey: weeklyKey });
+      const prev = queryClient.getQueryData<WeeklyPlansBundle>(weeklyKey);
       if (prev) {
-        queryClient.setQueryData<WeeklyPlansBundle>(["weekly-plans"], {
+        queryClient.setQueryData<WeeklyPlansBundle>(weeklyKey, {
           ...prev,
           plans: prev.plans.filter((p) => p.id !== planId),
         });
@@ -158,7 +166,7 @@ export default function WeeklyPlanScreen() {
       return { prev };
     },
     onError: (_err, _planId, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["weekly-plans"], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(weeklyKey, ctx.prev);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["weekly-plans"] }),
   });
@@ -215,6 +223,19 @@ export default function WeeklyPlanScreen() {
 
   const activePlanCount = data?.plans.length ?? 0;
   const childPlanCount = childPlans.length;
+
+  // Server-priced preview (same engine as checkout) so multi-day savings show
+  // BEFORE paying. Re-fetches whenever the plan changes. Before sales tax.
+  const planSignature = (data?.plans ?? []).map((p) => p.id).join(",");
+  const previewQ = useQuery({
+    queryKey: ["weekly-preview", weekScope, planSignature],
+    queryFn: () => fetchWeeklyCheckoutPreview(weekScope),
+    enabled: !!data && activePlanCount > 0,
+    retry: false,
+    staleTime: 0,
+  });
+  const preview = previewQ.data ?? null;
+  const hasSavings = !!preview && preview.discountCents > 0;
   const childDoneCount = countDoneSlots(weekdaySlots);
 
   async function handleCheckout() {
@@ -225,7 +246,7 @@ export default function WeeklyPlanScreen() {
     setSubmitting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     try {
-      const { checkoutUrl } = await createWeeklyCheckout();
+      const { checkoutUrl } = await createWeeklyCheckout(undefined, weekScope);
       const result = await WebBrowser.openAuthSessionAsync(checkoutUrl, "lunchpad://checkout/success");
       if (result.type === "success" && result.url && result.url.includes("/checkout/success")) {
         const match = result.url.match(/[?&]orderId=([^&]+)/);
@@ -308,6 +329,37 @@ export default function WeeklyPlanScreen() {
             </>
           ) : null}
         </View>
+
+        {/* This week / next week */}
+        {data.week?.hasCurrent && data.week?.hasNext ? (
+          <View style={s.weekToggle}>
+            {(["current", "next"] as const).map((scope) => {
+              const on = weekScope === scope;
+              return (
+                <TouchableOpacity
+                  key={scope}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    setRequestedWeek(scope);
+                  }}
+                  style={[
+                    s.weekToggleBtn,
+                    on
+                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
+                      : { backgroundColor: "transparent", borderColor: theme.border },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  accessibilityLabel={scope === "current" ? "This week" : "Next week"}
+                >
+                  <Text style={{ color: on ? theme.dark : theme.textSecondary, fontWeight: "700", fontSize: 13 }}>
+                    {scope === "current" ? "This week" : "Next week"}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : null}
 
         {/* Eater chips */}
         {data.children.length > 1 ? (
@@ -487,9 +539,20 @@ export default function WeeklyPlanScreen() {
               <Text style={[s.footerLabel, { color: theme.textMuted }]}>
                 {activePlanCount} MEAL{activePlanCount === 1 ? "" : "S"}
               </Text>
+              {hasSavings && preview ? (
+                <Text style={[s.footerStrike, { color: theme.textMuted }]}>
+                  {formatPrice(preview.subtotalCents)}
+                </Text>
+              ) : null}
               <Text style={[s.footerTotal, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
-                {formatPrice(totalCents)}
+                {formatPrice(preview ? preview.totalCents : totalCents)}
               </Text>
+              {hasSavings && preview ? (
+                <Text style={[s.footerSave, { color: theme.success }]}>
+                  You save {formatPrice(preview.discountCents)} · {preview.discountNames[0] ?? "discount"}
+                </Text>
+              ) : null}
+              <Text style={[s.footerTax, { color: theme.textMuted }]}>+ sales tax at checkout</Text>
             </View>
             <PrimaryButton
               label="Checkout the week"
@@ -887,6 +950,11 @@ const styles = (theme: ReturnType<typeof useTheme>) =>
     },
     footerLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 1 },
     footerTotal: { fontSize: 19, fontWeight: "600", marginTop: 1 },
+    footerStrike: { fontSize: 12, textDecorationLine: "line-through", marginTop: 1 },
+    footerSave: { fontSize: 12, fontWeight: "700", marginTop: 1 },
+    footerTax: { fontSize: 11, marginTop: 1 },
+    weekToggle: { flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 8 },
+    weekToggleBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
   });
 
 const modalStyles = (theme: ReturnType<typeof useTheme>) =>

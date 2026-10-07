@@ -318,7 +318,7 @@ export default function HomeScreen() {
 
   const datesQ = useQuery({ queryKey: ["delivery-dates"], queryFn: fetchDeliveryDates });
   const accountQ = useQuery({ queryKey: ["account"], queryFn: fetchAccount, retry: false });
-  const weeklyQ = useQuery({ queryKey: ["weekly-plans"], queryFn: fetchWeeklyPlans, retry: false });
+  const weeklyQ = useQuery({ queryKey: ["weekly-plans"], queryFn: () => fetchWeeklyPlans(), retry: false });
   const ordersQ = useQuery({ queryKey: ["orders"], queryFn: fetchOrders, retry: false });
 
   const dates = datesQ.data ?? [];

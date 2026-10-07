@@ -286,6 +286,9 @@ import type {
   RestaurantSearchResult,
   WeeklyPlansBundle,
   WeeklyPlan,
+  WeekScope,
+  CheckoutPreview,
+  CancelQuote,
 } from "./types";
 
 export const fetchDeliveryDates = () =>
@@ -344,8 +347,10 @@ export const deleteChild = (id: string) =>
 
 // ── Weekly plan ──────────────────────────────────────────────────────────────
 
-export const fetchWeeklyPlans = () =>
-  apiGet<WeeklyPlansBundle>("/api/mobile/native/weekly-plans");
+export const fetchWeeklyPlans = (week?: WeekScope) =>
+  apiGet<WeeklyPlansBundle>(
+    week ? `/api/mobile/native/weekly-plans?week=${week}` : "/api/mobile/native/weekly-plans",
+  );
 
 export const upsertWeeklyPlan = (data: {
   parentChildId: string;
@@ -360,11 +365,38 @@ export const upsertWeeklyPlan = (data: {
 export const deleteWeeklyPlan = (planId: string) =>
   apiDelete<{ ok: true }>(`/api/mobile/native/weekly-plans/${encodeURIComponent(planId)}`);
 
-export const createWeeklyCheckout = (code?: string) =>
+export const createWeeklyCheckout = (code?: string, week?: WeekScope) =>
   apiPost<{ checkoutUrl: string; batchId: string; totalCents: number }>(
     "/api/mobile/native/weekly-checkout",
-    code ? { code } : {},
+    { ...(code ? { code } : {}), ...(week ? { week } : {}) },
   );
+
+/** Read-only price preview (with multi-day savings) for the saved weekly plan. */
+export const fetchWeeklyCheckoutPreview = (week?: WeekScope) =>
+  apiGet<{ preview: CheckoutPreview }>(
+    week
+      ? `/api/mobile/native/weekly-checkout/preview?week=${week}`
+      : "/api/mobile/native/weekly-checkout/preview",
+  ).then((r) => r.preview);
+
+/** Read-only price preview (with multi-day savings) for a live cart. */
+export const previewCartCheckout = (data: {
+  items: {
+    parentChildId: string;
+    deliveryDateId: string;
+    menuItemId: string;
+    choice?: string;
+    size?: string;
+    additions?: string[];
+    removals?: string[];
+  }[];
+  code?: string;
+}) =>
+  apiPost<{ preview: CheckoutPreview }>("/api/mobile/native/cart-preview", data).then((r) => r.preview);
+
+/** What cancelling an order will refund (and any multi-day discount kept). */
+export const fetchCancelQuote = (orderId: string) =>
+  apiGet<CancelQuote>(`/api/mobile/native/orders/${encodeURIComponent(orderId)}/cancel-quote`);
 
 export const createOrder = (data: {
   deliveryDateId: string;

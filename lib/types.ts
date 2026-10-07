@@ -189,6 +189,10 @@ export type OrderHistoryItem = {
   deliveryDate: string;
   schoolName: string;
   totalCents: number;
+  /** Pre-discount price and the discount taken off (multi-day savings etc.).
+   *  Absent on servers older than the discount rollout. */
+  subtotalCents?: number;
+  discountCents?: number;
   createdAt: string;
   items: { name: string; lineTotalCents: number; additions: string[]; removals: string[] }[];
   /** Which child this order is for — present on orders placed after this
@@ -232,7 +236,11 @@ export type WeeklyPlan = {
   isActive: boolean;
 };
 
+export type WeekScope = "current" | "next";
+
 export type WeeklyPlansBundle = {
+  /** Present when the request asked for a specific week. */
+  week?: { scope: WeekScope; hasCurrent: boolean; hasNext: boolean } | null;
   children: WeeklyChild[];
   deliveryDates: WeeklyDeliveryDate[];
   plans: WeeklyPlan[];
@@ -245,4 +253,38 @@ export type RestaurantSearchResult = {
   name: string;
   logoUrl: string | null;
   primaryColor: string | null;
+};
+
+// ── Pre-checkout price preview ───────────────────────────────────────────────
+// Mirrors GET /api/mobile/native/weekly-checkout/preview and
+// POST /api/mobile/native/cart-preview. Totals are BEFORE sales tax (Stripe
+// adds tax on its own page).
+
+export type CheckoutPreviewLine = {
+  /** yyyy-MM-dd local delivery date. */
+  date: string;
+  weekdayLabel: string;
+  studentName: string;
+  itemName: string;
+  lineTotalCents: number;
+  discountCents: number;
+  discountName: string | null;
+};
+
+export type CheckoutPreview = {
+  lines: CheckoutPreviewLine[];
+  subtotalCents: number;
+  discountCents: number;
+  totalCents: number;
+  discountNames: string[];
+  skipped: string[];
+};
+
+/** GET /api/mobile/native/orders/:id/cancel-quote */
+export type CancelQuote = {
+  totalCents: number;
+  refundCents: number;
+  /** Multi-day discount kept because a later day loses its tier. */
+  withheldCents: number;
+  adjustments: { orderNumber: string; discountName: string; lostDiscountCents: number; addCents: number }[];
 };
