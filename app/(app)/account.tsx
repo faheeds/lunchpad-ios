@@ -551,9 +551,16 @@ export default function AccountScreen() {
                         <View style={[s.statusBadge, { backgroundColor: `${statusColor}22` }]}>
                           <Text style={[s.statusText, { color: statusColor }]}>{statusLabel}</Text>
                         </View>
-                        <Text style={[s.orderTotal, { color: theme.textPrimary }]}>
-                          {formatPrice(order.totalCents)}
-                        </Text>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={[s.orderTotal, { color: theme.textPrimary }]}>
+                            {formatPrice(order.totalCents)}
+                          </Text>
+                          {(order.discountCents ?? 0) > 0 && (
+                            <Text style={{ color: theme.success, fontSize: 12, fontWeight: "600", marginTop: 2 }}>
+                              Saved {formatPrice(order.discountCents ?? 0)}
+                            </Text>
+                          )}
+                        </View>
                       </View>
                       <Text style={[s.orderItems, { color: theme.textPrimary }]} numberOfLines={2}>
                         {itemSummary}

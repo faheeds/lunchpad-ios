@@ -34,7 +34,13 @@ import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useCart, formatPrice, isDraftChildId } from "../../lib/store";
-import { fetchAccount, fetchDeliveryDates, createCartCheckout, addChild } from "../../lib/api";
+import {
+  fetchAccount,
+  fetchDeliveryDates,
+  createCartCheckout,
+  addChild,
+  previewCartCheckout,
+} from "../../lib/api";
 import { buildCartKey } from "../../lib/types";
 import { computeLineTotalCents } from "../../lib/pricing";
 import { useTheme } from "../../lib/theme";
@@ -156,6 +162,40 @@ export default function CartScreen() {
   // /api/mobile/native/cart-checkout), so there's no inline validation
   // here -- the parent finds out the real total on the Stripe screen.
   const [promoCode, setPromoCode] = useState("");
+
+  // Server-priced preview (same discount engine as checkout) so multi-day
+  // savings show BEFORE paying. Only possible once every item is assigned to
+  // an already-saved child -- drafts don't exist server-side yet -- so until
+  // then the cart simply shows the undiscounted total, as before. The total
+  // is before sales tax; Stripe adds tax on its own page.
+  const [debouncedPromo, setDebouncedPromo] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPromo(promoCode.trim()), 500);
+    return () => clearTimeout(t);
+  }, [promoCode]);
+  const previewItems = useMemo(() => {
+    if (items.length === 0) return null;
+    if (items.some((i) => !i.parentChildId || isDraftChildId(i.parentChildId))) return null;
+    return items.flatMap((i) =>
+      Array.from({ length: i.quantity }, () => ({
+        parentChildId: i.parentChildId!,
+        deliveryDateId: i.deliveryDateId,
+        menuItemId: i.menuItemId,
+        choice: i.choice,
+        size: i.size,
+        additions: i.additions,
+        removals: i.removals,
+      })),
+    );
+  }, [items]);
+  const previewQ = useQuery({
+    queryKey: ["cart-preview", previewItems, debouncedPromo],
+    queryFn: () => previewCartCheckout({ items: previewItems!, code: debouncedPromo || undefined }),
+    enabled: previewItems !== null,
+    retry: false,
+  });
+  const preview = previewQ.data ?? null;
+  const hasSavings = !!preview && preview.discountCents > 0;
 
   // Which item's "+ Add a child" modal is open, if any. Null = closed.
   const [addingForCartKey, setAddingForCartKey] = useState<string | null>(null);
@@ -695,13 +735,29 @@ export default function CartScreen() {
 
           {/* Checkout footer */}
           <View style={[s.footer, { backgroundColor: theme.surface, borderTopColor: theme.border }]}>
+            {hasSavings && preview ? (
+              <Text style={{ color: theme.success, fontSize: 13, fontWeight: "700", marginBottom: 4 }}>
+                You save {formatPrice(preview.discountCents)} · {preview.discountNames[0] ?? "discount"} applied
+              </Text>
+            ) : null}
             <View style={s.totalRow}>
               <Text style={[s.totalLabel, { color: theme.textSecondary }]}>Total</Text>
-              <Text style={[s.totalAmount, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
-                {formatPrice(total)}
-              </Text>
+              <View style={{ alignItems: "flex-end" }}>
+                {hasSavings && preview ? (
+                  <Text style={{ color: theme.textMuted, fontSize: 13, textDecorationLine: "line-through" }}>
+                    {formatPrice(preview.subtotalCents)}
+                  </Text>
+                ) : null}
+                <Text style={[s.totalAmount, { color: theme.textPrimary, fontFamily: theme.fontDisplay }]}>
+                  {formatPrice(preview ? preview.totalCents : total)}
+                </Text>
+              </View>
             </View>
-            <PrimaryButton label={`Checkout \u2014 ${formatPrice(total)}`} onPress={handleCheckout} loading={submitting} />
+            <PrimaryButton
+              label={`Checkout \u2014 ${formatPrice(preview ? preview.totalCents : total)}`}
+              onPress={handleCheckout}
+              loading={submitting}
+            />
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
