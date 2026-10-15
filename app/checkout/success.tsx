@@ -22,7 +22,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "../../lib/theme";
 import { useCart } from "../../lib/store";
-import { getJWT } from "../../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { getJWT, fetchOrders } from "../../lib/api";
 import { Screen, Card, Eyebrow, SecondaryButton } from "../../components/ui";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -63,6 +64,7 @@ export default function CheckoutSuccess() {
   const restaurantName = theme.restaurant?.name;
   const supportEmail = theme.restaurant?.contactEmail;
   const clearCart = useCart((st) => st.clearCart);
+  const queryClient = useQueryClient();
 
   const [isSignedIn, setIsSignedIn] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -75,11 +77,30 @@ export default function CheckoutSuccess() {
   useEffect(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     clearCart();
+    // The orders list was cached before this order existed; drop it so history
+    // and the order screen load the new order instead of a stale list.
+    queryClient.invalidateQueries({ queryKey: ["orders"] }).catch(() => {});
     Animated.parallel([
       Animated.timing(opacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
     ]).start();
-  }, [clearCart, opacityAnim, scaleAnim]);
+  }, [clearCart, queryClient, opacityAnim, scaleAnim]);
+
+  // Open the order screen only if the fresh list actually has this order.
+  // A weekly checkout returns a batch id (not an order id), and a stale or
+  // failed fetch must not land the customer on a blank "Order not found".
+  async function openOrder() {
+    try {
+      const fresh = await queryClient.fetchQuery({ queryKey: ["orders"], queryFn: fetchOrders, staleTime: 0 });
+      if (orderId && fresh.some((o) => o.id === orderId)) {
+        router.replace({ pathname: "/(app)/orders/[orderId]", params: { orderId } });
+        return;
+      }
+    } catch {
+      // fall through to the account page
+    }
+    router.replace("/(app)/account");
+  }
 
   return (
     <Screen>
@@ -124,12 +145,7 @@ export default function CheckoutSuccess() {
                 icon="receipt-outline"
                 title="View or modify your order"
                 sub="Cancel or change items before the cutoff"
-                onPress={() =>
-                  router.replace({
-                    pathname: "/(app)/orders/[orderId]",
-                    params: { orderId },
-                  })
-                }
+                onPress={openOrder}
               />
             ) : null}
             <MomentumCard

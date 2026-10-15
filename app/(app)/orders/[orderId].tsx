@@ -68,6 +68,7 @@ export default function OrderDetail() {
     queryKey: ["orders"],
     queryFn: fetchOrders,
     retry: false,
+    refetchOnMount: "always",
   });
 
   const { data: deliveryDates } = useQuery({
