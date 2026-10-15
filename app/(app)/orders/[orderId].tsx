@@ -24,6 +24,7 @@ import {
   fetchOrders,
   fetchDeliveryDates,
   apiDelete,
+  apiPost,
   fetchCancelQuote,
   modifyOrder,
   type ModifyOrderItem,
@@ -77,6 +78,7 @@ export default function OrderDetail() {
 
   const [isModifying, setIsModifying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [modifyOpen, setModifyOpen] = useState(false);
   // Snapshots captured at the moment the modify modal opens. Using live
@@ -181,6 +183,85 @@ export default function OrderDetail() {
     setEditOrder(order);
     setEditDeliveryDate(deliveryDate);
     setModifyOpen(true);
+  }
+
+  const isPending = order?.status === "PENDING";
+
+  // Unpaid checkout: reopen Stripe payment, or let the parent walk away from it.
+  async function handleResumePayment() {
+    if (!order) return;
+    try {
+      setIsResuming(true);
+      const r = await apiPost<{ action: "checkout" | "paid" | "expired"; checkoutUrl?: string }>(
+        `/api/mobile/native/orders/${order.id}/pending`,
+        {},
+      );
+      if (r.action === "checkout" && r.checkoutUrl) {
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          r.checkoutUrl,
+          "lunchpad://checkout/success",
+        );
+        await queryClient.invalidateQueries({ queryKey: ["orders"] });
+        if (browserResult.type === "success") {
+          Alert.alert("Payment received", "Your order is confirmed.");
+        }
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      if (r.action === "paid") {
+        Alert.alert("Already paid", "Good news: this order was paid and is confirmed.");
+      } else {
+        Alert.alert(
+          "Checkout expired",
+          "This checkout timed out and you were not charged. Tap Reorder to place it again.",
+        );
+      }
+    } catch (err) {
+      Alert.alert(
+        "Couldn't resume payment",
+        err instanceof Error ? err.message : "Please try again in a minute.",
+      );
+    } finally {
+      setIsResuming(false);
+    }
+  }
+
+  function handleCancelPending() {
+    if (!order) return;
+    Alert.alert(
+      "Cancel this checkout?",
+      `Order #${order.orderNumber.slice(-6)} hasn't been paid, so you won't be charged.`,
+      [
+        { text: "Keep it", style: "cancel" },
+        {
+          text: "Cancel checkout",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setIsCancelling(true);
+              const r = await apiDelete<{ ok: boolean; action: "cancelled" | "paid" }>(
+                `/api/mobile/native/orders/${order.id}/pending`,
+              );
+              await queryClient.invalidateQueries({ queryKey: ["orders"] });
+              if (r.action === "paid") {
+                Alert.alert("Already paid", "This order was paid and is confirmed, so it was not cancelled.");
+              } else {
+                Alert.alert("Checkout cancelled", "You were not charged.", [
+                  { text: "OK", onPress: () => router.back() },
+                ]);
+              }
+            } catch (err) {
+              Alert.alert(
+                "Couldn't cancel",
+                err instanceof Error ? err.message : "Please try again in a minute.",
+              );
+            } finally {
+              setIsCancelling(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   async function handleCancel() {
@@ -396,6 +477,41 @@ export default function OrderDetail() {
             </View>
           ))}
         </View>
+
+        {/* Unpaid checkout */}
+        {isPending && (
+          <View style={[styles.section, { backgroundColor: theme.surface, gap: 10 }]}>
+            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+              This order hasn't been paid yet, so the restaurant hasn't received it. Finish paying to confirm it, or cancel if you no longer want it.
+            </Text>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: theme.primary }]}
+              onPress={handleResumePayment}
+              disabled={isResuming || isCancelling}
+              accessibilityRole="button"
+              accessibilityLabel="Resume payment"
+            >
+              {isResuming ? (
+                <ActivityIndicator color={theme.textOnPrimary} />
+              ) : (
+                <Text style={[styles.actionBtnText, { color: theme.textOnPrimary }]}>Resume payment</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: theme.danger + "22", borderWidth: 1, borderColor: theme.danger }]}
+              onPress={handleCancelPending}
+              disabled={isResuming || isCancelling}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel checkout"
+            >
+              {isCancelling ? (
+                <ActivityIndicator color={theme.danger} />
+              ) : (
+                <Text style={[styles.actionBtnText, { color: theme.danger }]}>Cancel checkout</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Reorder — always available when there's at least one item, regardless of status */}
         {canReorder && (
